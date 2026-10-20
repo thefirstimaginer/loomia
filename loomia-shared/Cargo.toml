@@ -1,0 +1,10 @@
+[package]
+name = "loomia-shared"
+description = "Protocolo de rede, mundo e física compartilhados entre cliente e servidor do Loomia"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+serde.workspace = true
+serde_json.workspace = true

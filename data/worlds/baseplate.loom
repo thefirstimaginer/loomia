@@ -1,0 +1,1213 @@
+{
+  "id": "baseplate",
+  "name": "Baseplate Clássica",
+  "spawn": [
+    0.0,
+    0.2,
+    4.0
+  ],
+  "sky_color": [
+    150,
+    200,
+    240
+  ],
+  "blocks": [
+    {
+      "position": [
+        0.0,
+        -0.5,
+        0.0
+      ],
+      "size": [
+        80.0,
+        1.0,
+        80.0
+      ],
+      "color": [
+        104,
+        160,
+        60
+      ],
+      "material": "grass",
+      "collidable": true
+    },
+    {
+      "position": [
+        0.0,
+        0.02,
+        -12.0
+      ],
+      "size": [
+        3.0,
+        0.04,
+        1.4
+      ],
+      "color": [
+        130,
+        130,
+        140
+      ],
+      "material": "stone",
+      "collidable": false
+    },
+    {
+      "position": [
+        0.0,
+        0.02,
+        -10.5
+      ],
+      "size": [
+        3.0,
+        0.04,
+        1.4
+      ],
+      "color": [
+        130,
+        130,
+        140
+      ],
+      "material": "stone",
+      "collidable": false
+    },
+    {
+      "position": [
+        0.0,
+        0.02,
+        -9.0
+      ],
+      "size": [
+        3.0,
+        0.04,
+        1.4
+      ],
+      "color": [
+        130,
+        130,
+        140
+      ],
+      "material": "stone",
+      "collidable": false
+    },
+    {
+      "position": [
+        0.0,
+        0.02,
+        -7.5
+      ],
+      "size": [
+        3.0,
+        0.04,
+        1.4
+      ],
+      "color": [
+        130,
+        130,
+        140
+      ],
+      "material": "stone",
+      "collidable": false
+    },
+    {
+      "position": [
+        0.0,
+        0.02,
+        -6.0
+      ],
+      "size": [
+        3.0,
+        0.04,
+        1.4
+      ],
+      "color": [
+        130,
+        130,
+        140
+      ],
+      "material": "stone",
+      "collidable": false
+    },
+    {
+      "position": [
+        0.0,
+        0.02,
+        -4.5
+      ],
+      "size": [
+        3.0,
+        0.04,
+        1.4
+      ],
+      "color": [
+        130,
+        130,
+        140
+      ],
+      "material": "stone",
+      "collidable": false
+    },
+    {
+      "position": [
+        0.0,
+        0.02,
+        -3.0
+      ],
+      "size": [
+        3.0,
+        0.04,
+        1.4
+      ],
+      "color": [
+        130,
+        130,
+        140
+      ],
+      "material": "stone",
+      "collidable": false
+    },
+    {
+      "position": [
+        0.0,
+        0.02,
+        -1.5
+      ],
+      "size": [
+        3.0,
+        0.04,
+        1.4
+      ],
+      "color": [
+        130,
+        130,
+        140
+      ],
+      "material": "stone",
+      "collidable": false
+    },
+    {
+      "position": [
+        0.0,
+        0.02,
+        0.0
+      ],
+      "size": [
+        3.0,
+        0.04,
+        1.4
+      ],
+      "color": [
+        130,
+        130,
+        140
+      ],
+      "material": "stone",
+      "collidable": false
+    },
+    {
+      "position": [
+        0.0,
+        0.02,
+        1.5
+      ],
+      "size": [
+        3.0,
+        0.04,
+        1.4
+      ],
+      "color": [
+        130,
+        130,
+        140
+      ],
+      "material": "stone",
+      "collidable": false
+    },
+    {
+      "position": [
+        -14.0,
+        0.25,
+        -6.0
+      ],
+      "size": [
+        6.0,
+        0.5,
+        1.0
+      ],
+      "color": [
+        150,
+        70,
+        55
+      ],
+      "material": "brick",
+      "collidable": true
+    },
+    {
+      "position": [
+        -14.0,
+        0.75,
+        -5.0
+      ],
+      "size": [
+        6.0,
+        1.5,
+        1.0
+      ],
+      "color": [
+        150,
+        70,
+        55
+      ],
+      "material": "brick",
+      "collidable": true
+    },
+    {
+      "position": [
+        -14.0,
+        1.25,
+        -4.0
+      ],
+      "size": [
+        6.0,
+        2.5,
+        1.0
+      ],
+      "color": [
+        150,
+        70,
+        55
+      ],
+      "material": "brick",
+      "collidable": true
+    },
+    {
+      "position": [
+        -14.0,
+        1.75,
+        -3.0
+      ],
+      "size": [
+        6.0,
+        3.5,
+        1.0
+      ],
+      "color": [
+        150,
+        70,
+        55
+      ],
+      "material": "brick",
+      "collidable": true
+    },
+    {
+      "position": [
+        -14.0,
+        2.25,
+        -2.0
+      ],
+      "size": [
+        6.0,
+        4.5,
+        1.0
+      ],
+      "color": [
+        150,
+        70,
+        55
+      ],
+      "material": "brick",
+      "collidable": true
+    },
+    {
+      "position": [
+        -14.0,
+        2.75,
+        -1.0
+      ],
+      "size": [
+        6.0,
+        5.5,
+        1.0
+      ],
+      "color": [
+        150,
+        70,
+        55
+      ],
+      "material": "brick",
+      "collidable": true
+    },
+    {
+      "position": [
+        -14.0,
+        3.5,
+        1.5
+      ],
+      "size": [
+        6.0,
+        1.0,
+        4.0
+      ],
+      "color": [
+        130,
+        130,
+        140
+      ],
+      "material": "stone",
+      "collidable": true
+    },
+    {
+      "position": [
+        9.0,
+        1.0,
+        -8.0
+      ],
+      "size": [
+        1.0,
+        2.0,
+        1.0
+      ],
+      "color": [
+        200,
+        60,
+        50
+      ],
+      "material": "plastic",
+      "collidable": true
+    },
+    {
+      "position": [
+        11.0,
+        2.0,
+        -9.5
+      ],
+      "size": [
+        1.0,
+        4.0,
+        1.0
+      ],
+      "color": [
+        240,
+        200,
+        70
+      ],
+      "material": "plastic",
+      "collidable": true
+    },
+    {
+      "position": [
+        13.0,
+        1.5,
+        -11.0
+      ],
+      "size": [
+        1.0,
+        3.0,
+        1.0
+      ],
+      "color": [
+        60,
+        110,
+        200
+      ],
+      "material": "plastic",
+      "collidable": true
+    },
+    {
+      "position": [
+        16.0,
+        0.1,
+        10.0
+      ],
+      "size": [
+        10.0,
+        0.2,
+        10.0
+      ],
+      "color": [
+        124,
+        86,
+        48
+      ],
+      "material": "wood",
+      "collidable": true
+    },
+    {
+      "position": [
+        16.0,
+        2.0,
+        15.0
+      ],
+      "size": [
+        10.0,
+        4.0,
+        0.5
+      ],
+      "color": [
+        150,
+        70,
+        55
+      ],
+      "material": "brick",
+      "collidable": true
+    },
+    {
+      "position": [
+        11.0,
+        2.0,
+        10.0
+      ],
+      "size": [
+        0.5,
+        4.0,
+        10.0
+      ],
+      "color": [
+        150,
+        70,
+        55
+      ],
+      "material": "brick",
+      "collidable": true
+    },
+    {
+      "position": [
+        21.0,
+        2.0,
+        10.0
+      ],
+      "size": [
+        0.5,
+        4.0,
+        10.0
+      ],
+      "color": [
+        150,
+        70,
+        55
+      ],
+      "material": "brick",
+      "collidable": true
+    },
+    {
+      "position": [
+        12.75,
+        2.0,
+        5.0
+      ],
+      "size": [
+        3.5,
+        4.0,
+        0.5
+      ],
+      "color": [
+        150,
+        70,
+        55
+      ],
+      "material": "brick",
+      "collidable": true
+    },
+    {
+      "position": [
+        19.25,
+        2.0,
+        5.0
+      ],
+      "size": [
+        3.5,
+        4.0,
+        0.5
+      ],
+      "color": [
+        150,
+        70,
+        55
+      ],
+      "material": "brick",
+      "collidable": true
+    },
+    {
+      "position": [
+        16.0,
+        3.5,
+        5.0
+      ],
+      "size": [
+        3.0,
+        1.0,
+        0.5
+      ],
+      "color": [
+        150,
+        70,
+        55
+      ],
+      "material": "brick",
+      "collidable": true
+    },
+    {
+      "position": [
+        16.0,
+        4.25,
+        10.0
+      ],
+      "size": [
+        10.5,
+        0.5,
+        10.5
+      ],
+      "color": [
+        90,
+        92,
+        100
+      ],
+      "material": "stone",
+      "collidable": true
+    },
+    {
+      "position": [
+        21.1,
+        2.4,
+        8.0
+      ],
+      "size": [
+        0.1,
+        1.4,
+        1.4
+      ],
+      "color": [
+        90,
+        230,
+        255
+      ],
+      "material": "neon",
+      "collidable": false
+    },
+    {
+      "position": [
+        -20.0,
+        1.5,
+        12.0
+      ],
+      "size": [
+        1.0,
+        3.0,
+        1.0
+      ],
+      "color": [
+        92,
+        64,
+        38
+      ],
+      "material": "wood",
+      "collidable": true
+    },
+    {
+      "position": [
+        -20.0,
+        4.0,
+        12.0
+      ],
+      "size": [
+        3.0,
+        2.0,
+        3.0
+      ],
+      "color": [
+        58,
+        120,
+        52
+      ],
+      "material": "grass",
+      "collidable": true
+    },
+    {
+      "position": [
+        -20.0,
+        5.25,
+        12.0
+      ],
+      "size": [
+        2.0,
+        0.5,
+        2.0
+      ],
+      "color": [
+        58,
+        120,
+        52
+      ],
+      "material": "grass",
+      "collidable": true
+    },
+    {
+      "position": [
+        -24.0,
+        1.5,
+        4.0
+      ],
+      "size": [
+        1.0,
+        3.0,
+        1.0
+      ],
+      "color": [
+        92,
+        64,
+        38
+      ],
+      "material": "wood",
+      "collidable": true
+    },
+    {
+      "position": [
+        -24.0,
+        4.0,
+        4.0
+      ],
+      "size": [
+        3.0,
+        2.0,
+        3.0
+      ],
+      "color": [
+        58,
+        120,
+        52
+      ],
+      "material": "grass",
+      "collidable": true
+    },
+    {
+      "position": [
+        -24.0,
+        5.25,
+        4.0
+      ],
+      "size": [
+        2.0,
+        0.5,
+        2.0
+      ],
+      "color": [
+        58,
+        120,
+        52
+      ],
+      "material": "grass",
+      "collidable": true
+    },
+    {
+      "position": [
+        22.0,
+        1.5,
+        -16.0
+      ],
+      "size": [
+        1.0,
+        3.0,
+        1.0
+      ],
+      "color": [
+        92,
+        64,
+        38
+      ],
+      "material": "wood",
+      "collidable": true
+    },
+    {
+      "position": [
+        22.0,
+        4.0,
+        -16.0
+      ],
+      "size": [
+        3.0,
+        2.0,
+        3.0
+      ],
+      "color": [
+        58,
+        120,
+        52
+      ],
+      "material": "grass",
+      "collidable": true
+    },
+    {
+      "position": [
+        22.0,
+        5.25,
+        -16.0
+      ],
+      "size": [
+        2.0,
+        0.5,
+        2.0
+      ],
+      "color": [
+        58,
+        120,
+        52
+      ],
+      "material": "grass",
+      "collidable": true
+    },
+    {
+      "position": [
+        -10.0,
+        1.5,
+        -20.0
+      ],
+      "size": [
+        1.0,
+        3.0,
+        1.0
+      ],
+      "color": [
+        92,
+        64,
+        38
+      ],
+      "material": "wood",
+      "collidable": true
+    },
+    {
+      "position": [
+        -10.0,
+        4.0,
+        -20.0
+      ],
+      "size": [
+        3.0,
+        2.0,
+        3.0
+      ],
+      "color": [
+        58,
+        120,
+        52
+      ],
+      "material": "grass",
+      "collidable": true
+    },
+    {
+      "position": [
+        -10.0,
+        5.25,
+        -20.0
+      ],
+      "size": [
+        2.0,
+        0.5,
+        2.0
+      ],
+      "color": [
+        58,
+        120,
+        52
+      ],
+      "material": "grass",
+      "collidable": true
+    },
+    {
+      "position": [
+        -2.0,
+        0.06,
+        -2.0
+      ],
+      "size": [
+        2.0,
+        0.12,
+        2.0
+      ],
+      "color": [
+        235,
+        235,
+        235
+      ],
+      "material": "plastic",
+      "collidable": false
+    },
+    {
+      "position": [
+        -2.0,
+        0.06,
+        0.0
+      ],
+      "size": [
+        2.0,
+        0.12,
+        2.0
+      ],
+      "color": [
+        200,
+        60,
+        50
+      ],
+      "material": "plastic",
+      "collidable": false
+    },
+    {
+      "position": [
+        -2.0,
+        0.06,
+        2.0
+      ],
+      "size": [
+        2.0,
+        0.12,
+        2.0
+      ],
+      "color": [
+        235,
+        235,
+        235
+      ],
+      "material": "plastic",
+      "collidable": false
+    },
+    {
+      "position": [
+        0.0,
+        0.06,
+        -2.0
+      ],
+      "size": [
+        2.0,
+        0.12,
+        2.0
+      ],
+      "color": [
+        200,
+        60,
+        50
+      ],
+      "material": "plastic",
+      "collidable": false
+    },
+    {
+      "position": [
+        0.0,
+        0.06,
+        0.0
+      ],
+      "size": [
+        2.0,
+        0.12,
+        2.0
+      ],
+      "color": [
+        235,
+        235,
+        235
+      ],
+      "material": "plastic",
+      "collidable": false
+    },
+    {
+      "position": [
+        0.0,
+        0.06,
+        2.0
+      ],
+      "size": [
+        2.0,
+        0.12,
+        2.0
+      ],
+      "color": [
+        200,
+        60,
+        50
+      ],
+      "material": "plastic",
+      "collidable": false
+    },
+    {
+      "position": [
+        2.0,
+        0.06,
+        -2.0
+      ],
+      "size": [
+        2.0,
+        0.12,
+        2.0
+      ],
+      "color": [
+        235,
+        235,
+        235
+      ],
+      "material": "plastic",
+      "collidable": false
+    },
+    {
+      "position": [
+        2.0,
+        0.06,
+        0.0
+      ],
+      "size": [
+        2.0,
+        0.12,
+        2.0
+      ],
+      "color": [
+        200,
+        60,
+        50
+      ],
+      "material": "plastic",
+      "collidable": false
+    },
+    {
+      "position": [
+        2.0,
+        0.06,
+        2.0
+      ],
+      "size": [
+        2.0,
+        0.12,
+        2.0
+      ],
+      "color": [
+        235,
+        235,
+        235
+      ],
+      "material": "plastic",
+      "collidable": false
+    },
+    {
+      "position": [
+        -8.0,
+        1.5,
+        -8.0
+      ],
+      "size": [
+        0.4,
+        3.0,
+        0.4
+      ],
+      "color": [
+        90,
+        92,
+        100
+      ],
+      "material": "stone",
+      "collidable": true
+    },
+    {
+      "position": [
+        -8.0,
+        3.3,
+        -8.0
+      ],
+      "size": [
+        0.8,
+        0.6,
+        0.8
+      ],
+      "color": [
+        90,
+        230,
+        255
+      ],
+      "material": "neon",
+      "collidable": false
+    },
+    {
+      "position": [
+        8.0,
+        1.5,
+        -8.0
+      ],
+      "size": [
+        0.4,
+        3.0,
+        0.4
+      ],
+      "color": [
+        90,
+        92,
+        100
+      ],
+      "material": "stone",
+      "collidable": true
+    },
+    {
+      "position": [
+        8.0,
+        3.3,
+        -8.0
+      ],
+      "size": [
+        0.8,
+        0.6,
+        0.8
+      ],
+      "color": [
+        90,
+        230,
+        255
+      ],
+      "material": "neon",
+      "collidable": false
+    },
+    {
+      "position": [
+        -8.0,
+        1.5,
+        8.0
+      ],
+      "size": [
+        0.4,
+        3.0,
+        0.4
+      ],
+      "color": [
+        90,
+        92,
+        100
+      ],
+      "material": "stone",
+      "collidable": true
+    },
+    {
+      "position": [
+        -8.0,
+        3.3,
+        8.0
+      ],
+      "size": [
+        0.8,
+        0.6,
+        0.8
+      ],
+      "color": [
+        90,
+        230,
+        255
+      ],
+      "material": "neon",
+      "collidable": false
+    },
+    {
+      "position": [
+        8.0,
+        1.5,
+        8.0
+      ],
+      "size": [
+        0.4,
+        3.0,
+        0.4
+      ],
+      "color": [
+        90,
+        92,
+        100
+      ],
+      "material": "stone",
+      "collidable": true
+    },
+    {
+      "position": [
+        8.0,
+        3.3,
+        8.0
+      ],
+      "size": [
+        0.8,
+        0.6,
+        0.8
+      ],
+      "color": [
+        90,
+        230,
+        255
+      ],
+      "material": "neon",
+      "collidable": false
+    },
+    {
+      "position": [
+        0.0,
+        1.0,
+        -40.0
+      ],
+      "size": [
+        80.0,
+        2.0,
+        0.6
+      ],
+      "color": [
+        78,
+        128,
+        45
+      ],
+      "material": "grass",
+      "collidable": true
+    },
+    {
+      "position": [
+        0.0,
+        1.0,
+        40.0
+      ],
+      "size": [
+        80.0,
+        2.0,
+        0.6
+      ],
+      "color": [
+        78,
+        128,
+        45
+      ],
+      "material": "grass",
+      "collidable": true
+    },
+    {
+      "position": [
+        -40.0,
+        1.0,
+        0.0
+      ],
+      "size": [
+        0.6,
+        2.0,
+        80.0
+      ],
+      "color": [
+        78,
+        128,
+        45
+      ],
+      "material": "grass",
+      "collidable": true
+    },
+    {
+      "position": [
+        40.0,
+        1.0,
+        0.0
+      ],
+      "size": [
+        0.6,
+        2.0,
+        80.0
+      ],
+      "color": [
+        78,
+        128,
+        45
+      ],
+      "material": "grass",
+      "collidable": true
+    }
+  ]
+}
