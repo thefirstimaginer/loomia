@@ -140,6 +140,8 @@ pub struct Game {
     inner: Mutex<Inner>,
     outbox: broadcast::Sender<String>,
     worlds: Mutex<Vec<WorldInfo>>,
+    /// Pasta de onde o `.loom` ativo foi carregado (None antes do `load_world`).
+    maps_dir: Mutex<Option<std::path::PathBuf>>,
     registry: Registry,
     host: String,
     port: u16,
@@ -164,6 +166,7 @@ impl Game {
             }),
             outbox,
             worlds: Mutex::new(worlds),
+            maps_dir: Mutex::new(None),
             registry: Registry::new(),
             host,
             port,
@@ -213,7 +216,52 @@ impl Game {
             log::info(&format!("mundo ativo: {} ({} blocos)", map.name, map.blocks.len()));
             inner.map = map;
         }
+        *self.maps_dir.lock().await = Some(maps_dir);
         self.reset_all_to_spawn().await;
+    }
+
+    /// Re-lê o `.loom` do disco (usado pelo Studio depois de salvar) e reabre
+    /// as sessões para o novo mundo. Os jogadores voltam ao spawn.
+    pub async fn reload_world(self: &Arc<Self>) {
+        let Some(dir) = self.maps_dir.lock().await.clone() else { return };
+        let current = self.inner.lock().await.map.id.clone();
+        let path = dir.join(format!("{current}.loom"));
+        let Ok(text) = tokio::fs::read_to_string(&path).await else {
+            log::warn(&format!("reload: não consegui ler {}", path.display()));
+            return;
+        };
+        match serde_json::from_str::<WorldMap>(&text) {
+            Ok(loaded) => {
+                log::info(&format!("mundo '{}' recarregado ({} blocos)", loaded.name, loaded.blocks.len()));
+                self.inner.lock().await.map = loaded;
+                self.reset_all_to_spawn().await;
+            }
+            Err(err) => log::warn(&format!("reload: {} inválido: {err}", path.display())),
+        }
+    }
+
+    /// Grava o mapa (JSON já validado pelo chamador) e coloca todos no spawn.
+    pub async fn save_world(&self, id: String, text: String) -> Result<(), String> {
+        let dir = self.maps_dir.lock().await.clone().ok_or("mapa não carregado")?;
+        tokio::fs::create_dir_all(&dir).await.map_err(|e| e.to_string())?;
+        let path = dir.join(format!("{id}.loom"));
+        tokio::fs::write(&path, text).await.map_err(|e| e.to_string())?;
+        log::info(&format!("mapa salvo em {}", path.display()));
+        Ok(())
+    }
+
+    /// Dados exatos do arquivo `.loom` em disco (para o editor baixar o mapa).
+    pub async fn world_file(&self) -> Option<(std::path::PathBuf, String)> {
+        let dir = self.maps_dir.lock().await.clone()?;
+        let id = self.inner.lock().await.map.id.clone();
+        let path = dir.join(format!("{id}.loom"));
+        match tokio::fs::read_to_string(&path).await {
+            Ok(text) => Some((path, text)),
+            Err(_) => {
+                let map = self.map_clone().await;
+                serde_json::to_string_pretty(&map).ok().map(|text| (path, text))
+            }
+        }
     }
 
     pub fn tick_rate(&self) -> u32 {

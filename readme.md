@@ -4,24 +4,25 @@ Jogo 3D online de mundos em blocos inspirado no **Roblox clássico de 2008** —
 servidor escritos em **Rust**.
 
 ```
-┌──────────────────────────────────────────────────────────────────────────┐
+┌───────────────────────────────────────────────────────────────────────────┐
 │ loomia-frontend (React + Vite)      site/lobby: status, mundos, avatar,   │
-│                                     botão LAUNCH e prévia 3D do mapa     │
-│            │ fetch /api, ws /ws                                          │
-│            ▼                                                            │
-│ loomia-server (Axum + Tokio)        API REST + WebSocket + estáticos    │
-│   • simulação autoritativa a 30 Hz                                      │
-│   • física (colisão AABB) e replicação                                  │
-│   • salvamento de mundos (.loom) e registro de jogadores                │
-│   • launcher: compila/inicia o cliente nativo                           │
-│            ▲ ws://host:port/ws                                          │
-│            │                                                            │
-│ loomia-client (Rust + Bevy 3D)      janela nativa: "Carregando Loomia,   │
-│   • mapa de blocos, avatares, chat                                      │
-│   • previsão local + reconciliação                                      │
-│            ▲                                                            │
-│            └──── loomia-shared (protocolo, mundo e física comuns) ──────┘
-└──────────────────────────────────────────────────────────────────────────┘
+│                                     botão LAUNCH e prévia 3D do mapa      │
+│            │ fetch /api, ws /ws                                           │
+│            ▼                                                              │
+│ loomia-server (Axum + Tokio)        API REST + WebSocket + estáticos      │
+│   • simulação autoritativa a 30 Hz                                        │
+│   • física (colisão AABB) e replicação                                    │
+│   • salvamento de mundos (.loom) e registro de jogadores                  │
+│   • launcher: compila/inicia o cliente nativo                             │
+│            ▲ ws://host:port/ws                                            │
+│            │                                                              │
+│ loomia-client (Ruzit + Luau)        janela nativa do jogo                 │
+│   • mapa de blocos, avatares, chat (game/*.luau)                          │
+│   • previsão local + reconciliação                                        │
+│ loomia-studio (Ruzit + Luau)        editor de mapas (.loom)               │
+│            ▲                                                            ▲ │
+│            └──── loomia-shared (protocolo, mundo e física comuns) ──────┘ |
+└───────────────────────────────────────────────────────────────────────────┘
 ```
 
 ## Como rodar
@@ -52,7 +53,14 @@ cargo run -p loomia-server
 
 # 3) cliente (em outro terminal)
 cargo run -p loomia-client -- --server ws://127.0.0.1:8080/ws --name SeuNome
+
+# 4) editor de mapas (baixa o .loom do servidor, edita e salva de volta)
+cargo run -p loomia-studio -- --server http://127.0.0.1:8080
 ```
+
+> O cliente e o editor são **projetos Luau** (`loomia-client/game/` e
+> `loomia-studio/`) rodando na engine [Ruzit](Ruzit/README.md). O Bevy foi
+> removido: o binário Rust é só um lançador do projeto.
 
 Para desenvolver o site com hot-reload: `cd loomia-frontend && npm run dev` (porta 5173,
 com proxy para a API em 8080).
@@ -119,6 +127,7 @@ O cliente **prevê** o movimento rodando a mesma física do servidor
 | `LOOMIA_FRONTEND_DIR`  | `./loomia-frontend/dist`      | estáticos do site                      |
 | `LOOMIA_CLIENT_COMMAND`| —                             | binário/comando alternativo do cliente |
 | `LOOMIA_ALLOW_LAUNCH`  | —                             | `1` permite LAUNCH de fora da máquina  |
+| `LOOMIA_ALLOW_STUDIO`  | —                             | `1` permite salvar mapa de fora da máquina |
 | `LOOMIA_LOG`           | `info`                        | `debug`, `warn`, `error`               |
 
 ## Estrutura
@@ -126,7 +135,9 @@ O cliente **prevê** o movimento rodando a mesma física do servidor
 ```
 loomia-shared/   protocolo, mundo (.loom), física e avatar (compartilhados)
 loomia-server/   Axum/Tokio: API, WebSocket, loop de tique, launcher
-loomia-client/   Bevy: carregamento, mapa, avatares, câmera, HUD/chat, netcode
+loomia-client/   lançador Rust + projeto Ruzit em Luau (game/)
+loomia-studio/   editor de mapas: lançador Rust + projeto Ruzit em Luau
+Ruzit/           engine Luau (workspace separado, excluído deste)
 loomia-frontend/ React: lobby, avatar, botão LAUNCH, prévia do mundo
 scripts/         dev.sh e play.sh
 data/            gerado em runtime (mundos, jogadores, logs do cliente)

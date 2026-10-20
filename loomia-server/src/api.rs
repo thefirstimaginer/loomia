@@ -6,6 +6,8 @@
 //! | `GET  /api/status`      | versão, uptime, jogadores, mapa, latência  |
 //! | `GET  /api/worlds`      | catálogo de mundos                         |
 //! | `GET  /api/worlds/{id}` | mapa completo (blocos)                     |
+//! | `GET  /api/maps/{id}`   | arquivo `.loom` cru (cliente e Studio)     |
+//! | `POST /api/maps`        | Studio salva o mapa (e o servidor recarrega)|
 //! | `POST /api/player`      | registra/atualiza um avatar                |
 //! | `GET  /api/players`     | avatares já registrados                    |
 //! | `POST /api/launch`      | inicia o cliente nativo (botão LAUNCH)     |
@@ -13,7 +15,13 @@
 
 use std::{net::{IpAddr, SocketAddr}, path::PathBuf, sync::Arc};
 
-use axum::{extract::{ConnectInfo, State}, http::StatusCode, Json};
+use axum::{
+    body::Bytes,
+    extract::{ConnectInfo, State},
+    http::{header, StatusCode},
+    response::IntoResponse,
+    Json,
+};
 use loomia_shared::player::Appearance;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
@@ -96,6 +104,62 @@ pub async fn world(
         return Err((StatusCode::NOT_FOUND, Json(json!({ "error": "mundo não encontrado" }))));
     }
     Ok(Json(map))
+}
+
+/// Entrega o `.loom` exatamente como está no disco. É o que o cliente Ruzit
+/// (`Net.Serve`) e o editor carregam no boot.
+pub async fn map_file(
+    State(state): State<AppState>,
+    axum::extract::Path(id): axum::extract::Path<String>,
+) -> Result<impl IntoResponse, ApiError> {
+    let map = state.game.map_clone().await;
+    if map.id != id && id != "baseplate" {
+        return Err((StatusCode::NOT_FOUND, Json(json!({ "error": "mundo não encontrado" }))));
+    }
+    let Some((path, text)) = state.game.world_file().await else {
+        return Err((
+            StatusCode::SERVICE_UNAVAILABLE,
+            Json(json!({ "error": "mapa ainda não carregado" })),
+        ));
+    };
+    let _ = path;
+    Ok((
+        [
+            (header::CONTENT_TYPE, "application/json; charset=utf-8"),
+            (header::CACHE_CONTROL, "no-cache"),
+        ],
+        text,
+    ))
+}
+
+/// O Studio envia o mapa em JSON (corpo cru). Validamos, gravamos o `.loom`
+/// e recarregamos o mundo autoritativo, devolvendo todos ao spawn.
+pub async fn save_map(
+    State(state): State<AppState>,
+    ConnectInfo(addr): ConnectInfo<SocketAddr>,
+    body: Bytes,
+) -> Result<Json<Value>, ApiError> {
+    let from_local = addr.ip().is_loopback()
+        || matches!(addr.ip(), IpAddr::V4(v4) if v4.is_private());
+    if std::env::var("LOOMIA_ALLOW_STUDIO").as_deref() != Ok("1") && !from_local {
+        return Err((
+            StatusCode::FORBIDDEN,
+            Json(json!({ "error": "edição de mapa só é permitida a partir da máquina local" })),
+        ));
+    }
+
+    let text = String::from_utf8(body.to_vec())
+        .map_err(|_| bad_request("corpo não é UTF-8"))?;
+    let map: loomia_shared::world::WorldMap =
+        serde_json::from_str(&text).map_err(|err| bad_request(format!("mapa inválido: {err}")))?;
+    let blocks = map.blocks.len();
+    let id = map.id.clone();
+    state
+        .game
+        .save_world(id.clone(), text)
+        .await
+        .map_err(|err| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({ "error": err }))))?;
+    Ok(Json(json!({ "ok": true, "id": id, "blocks": blocks })))
 }
 
 pub async fn register_player(

@@ -1,0 +1,14 @@
+# Loomia Studio — editor de mapas sobre a engine Ruzit.
+# Rode com: cargo run -p loomia-studio
+# (ou, dentro de Ruzit/: cargo run --bin ruzit -- test loomia-studio)
+Name = "Loomia Studio"
+Version = "0.1.0"
+Creator = "Loomia"
+
+[configs]
+File Type = "Relative"
+
+[exe]
+name = "loomia-studio"
+windowed = false
+compress_scripts = true

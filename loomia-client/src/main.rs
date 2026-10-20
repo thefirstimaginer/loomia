@@ -1,122 +1,207 @@
-//! Cliente 3D do Loomia (Bevy).
+//! Cliente nativo do Loomia — **lançador** do projeto Ruzit.
 //!
-//! Módulos:
-//! * [`args`] — argumentos de linha de comando (`--server`, `--name`, `--world`).
-//! * [`net`] — WebSocket em thread própria e canal para o ECS.
-//! * [`loading`] — janela "Carregando Loomia, Aguarde!" enquanto conecta.
-//! * [`world_render`] — instancia os blocos do mapa recebido no `Welcome`.
-//! * [`avatar`] — constrói e anima os personagens (estilo 2008).
-//! * [`player`] — câmera, input, previsão local e reconciliação.
-//! * [`hud`] — chat, lista de jogadores e diagnósticos (ping/fps).
-//! * [`scene`] — câmera, luzes e céu.
+//! O jogo em si vive em `loomia-client/game/*.luau` e roda sobre a engine
+//! Ruzit (`Ruzit/Ruzit/runtime`), compilada como biblioteca e embutida neste
+//! binário. Não há mais Bevy: aqui só traduzimos os argumentos antigos
+//! (`--server`, `--name`, `--world`, `--appearance`) para variáveis de
+//! ambiente lidas pelo `game/config.luau` e chamamos `runtime::run_entry`.
+//!
+//! O mapa **não** é carregado do disco: o cliente recebe o `.loom` pelo
+//! servidor (WebSocket) e apenas o renderiza.
 
-mod args;
-mod avatar;
-mod hud;
-mod loading;
-mod net;
-mod player;
-mod scene;
-mod world_render;
+use std::env;
+use std::path::{Path, PathBuf};
+use std::process::ExitCode;
+use std::sync::Arc;
 
-use bevy::{
-    prelude::*,
-    window::{PresentMode, WindowResolution},
-};
+use loomia_shared::player::Appearance;
+use ruzit::config::FileType;
+use ruzit::package;
+use ruzit::vfs::{Fs, LazyPackageRegistry, Package};
 
-use crate::{args::LaunchOptions, net::NetPlugin};
+/// Pacote padrão do projeto (a engine chama isso de `@Game`).
+const PROJECT_ID: &str = "Loomia";
+const ENTRY: &str = "Main.luau";
 
-/// Frequência dos inputs enviados ao servidor (igual ao tick do servidor).
-pub const TICK_DT: f32 = 1.0 / 30.0;
-
-/// Fases do jogo (Bevy `States`).
-#[derive(States, Default, Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub enum GamePhase {
-    /// Tela "Carregando Loomia, Aguarde!" até o `Welcome` chegar.
-    #[default]
-    Loading,
-    /// Mundo carregado; o usuário joga.
-    Playing,
-    /// Conexão caiu.
-    Disconnected,
-}
-
-/// Configuração de execução vinda dos argumentos.
-#[derive(Resource, Debug, Clone)]
-pub struct ClientConfig {
-    pub server_url: String,
-    pub player_name: String,
-    pub world: Option<String>,
-    /// `--autoplay` faz o avatar andar sozinho (usado em testes automatizados).
-    pub autoplay: bool,
-    /// `--exit-after N` encerra o cliente após N segundos (smoke tests).
-    pub exit_after: Option<f32>,
-    /// Aparência escolhida no site (enviada pelo launcher).
-    pub appearance: Option<loomia_shared::player::Appearance>,
-}
-
-impl Default for ClientConfig {
-    fn default() -> Self {
-        Self {
-            server_url: "ws://127.0.0.1:8080/ws".into(),
-            player_name: "Loomian".into(),
-            world: None,
-            autoplay: false,
-            exit_after: None,
-            appearance: None,
+/// Pasta do projeto Ruzit.
+fn project_root() -> PathBuf {
+    if let Ok(dir) = env::var("LOOMIA_GAME_DIR") {
+        return PathBuf::from(dir);
+    }
+    // Rodando via `cargo run`: a pasta `game/` fica ao lado deste crate.
+    let bundled = Path::new(env!("CARGO_MANIFEST_DIR")).join("game");
+    if bundled.is_dir() {
+        return bundled;
+    }
+    // Binário distribuído: `game/` ao lado do executável, ou na raiz do repo.
+    if let Ok(exe) = env::current_exe() {
+        if let Some(dir) = exe.parent() {
+            let next_to_exe = dir.join("game");
+            if next_to_exe.is_dir() {
+                return next_to_exe;
+            }
+            if let Some(root) = dir.parent().and_then(|p| p.parent()) {
+                let candidate = root.join("loomia-client").join("game");
+                if candidate.is_dir() {
+                    return candidate;
+                }
+            }
         }
     }
+    bundled
 }
 
-fn main() {
-    let opts: LaunchOptions = args::parse();
-    let config = ClientConfig {
-        server_url: opts.server,
-        player_name: opts.name,
-        world: opts.world,
-        autoplay: opts.autoplay,
-        exit_after: opts.exit_after,
-        appearance: opts.appearance,
+struct Options {
+    server: String,
+    name: String,
+    world: Option<String>,
+    appearance: Option<Appearance>,
+}
+
+fn parse_args() -> Options {
+    let mut opts = Options {
+        server: env::var("LOOMIA_SERVER").unwrap_or_else(|_| "ws://127.0.0.1:8080/ws".into()),
+        name: env::var("LOOMIA_NAME").unwrap_or_else(|_| "Jogador".into()),
+        world: None,
+        appearance: None,
     };
 
-    App::new()
-        .insert_resource(ClearColor(Color::srgb_u8(150, 200, 240)))
-        .insert_resource(config)
-        .add_plugins(
-            DefaultPlugins
-                .set(WindowPlugin {
-                    primary_window: Some(Window {
-                        title: "Loomia".into(),
-                        resolution: WindowResolution::new(1280.0, 720.0),
-                        present_mode: PresentMode::AutoVsync,
-                        ..default()
-                    }),
-                    ..default()
-                })
-                .set(ImagePlugin::default_nearest()),
-        )
-        .init_state::<GamePhase>()
-        .add_plugins((
-            NetPlugin,
-            loading::LoadingPlugin,
-            scene::ScenePlugin,
-            world_render::WorldRenderPlugin,
-            avatar::AvatarPlugin,
-            player::PlayerPlugin,
-            hud::HudPlugin,
-        ))
-        .add_systems(Startup, utilities::log_startup)
-        .run();
+    let mut args = env::args().skip(1);
+    while let Some(arg) = args.next() {
+        match arg.as_str() {
+            "--server" | "-s" => {
+                if let Some(v) = args.next() {
+                    opts.server = v;
+                }
+            }
+            "--name" | "-n" => {
+                if let Some(v) = args.next() {
+                    opts.name = v;
+                }
+            }
+            "--world" | "-w" => opts.world = args.next(),
+            "--appearance" => {
+                if let Some(json) = args.next() {
+                    match serde_json::from_str::<Appearance>(&json) {
+                        Ok(appearance) => opts.appearance = Some(appearance),
+                        Err(err) => eprintln!("--appearance inválida: {err}"),
+                    }
+                }
+            }
+            // Aceitos pelo launcher antigo; a engine não usa.
+            "--autoplay" => {}
+            "--exit-after" => {
+                args.next();
+            }
+            "--help" | "-h" => {
+                println!(
+                    "Loomia client (Ruzit)\n\n\
+                     Uso: loomia-client [--server ws://host:8080/ws] [--name NOME] [--world ID]"
+                );
+                std::process::exit(0);
+            }
+            "--version" | "-V" => {
+                println!("loomia-client {}", env!("CARGO_PKG_VERSION"));
+                std::process::exit(0);
+            }
+            other => eprintln!("argumento desconhecido ignorado: {other}"),
+        }
+    }
+
+    opts.name = opts
+        .name
+        .chars()
+        .filter(|c| !c.is_control())
+        .take(20)
+        .collect();
+    if opts.name.trim().is_empty() {
+        opts.name = "Jogador".into();
+    }
+    opts
 }
 
-mod utilities {
-    use super::*;
+/// Monta o `Fs` do projeto em "modo teste": lê os `.luau` direto do disco.
+fn load_project(root: &Path, entry: &str) -> Result<Fs, String> {
+    let (files, assets) = package::collect_project(root)?;
+    let package = Package {
+        id: PROJECT_ID.to_string(),
+        name: "Loomia".to_string(),
+        version: env!("CARGO_PKG_VERSION").to_string(),
+        creator: "Loomia".to_string(),
+        entry: entry.to_string(),
+        file_type: FileType::Relative,
+        physical_root: Some(root.to_path_buf()),
+        files,
+        assets: std::sync::RwLock::new(Some(package::encode_assets_b64(assets))),
+        scripts_compressed: false,
+        scripts_bytecode: false,
+        encryption_token: String::new(),
+        sources: Vec::new(),
+        activated: std::sync::atomic::AtomicBool::new(true),
+        is_default: true,
+        package_flags: Vec::new(),
+        pending_shards: std::sync::RwLock::new(Vec::new()),
+    };
+    let mut registry = LazyPackageRegistry::new_test_mode();
+    registry.insert_ready(PROJECT_ID.to_string(), Arc::new(package));
+    Ok(Fs::Bundle {
+        packages: Arc::new(registry),
+        default_id: PROJECT_ID.to_string(),
+        file_type: FileType::Relative,
+        physical_root: root.to_path_buf(),
+    })
+}
 
-    pub fn log_startup(config: Res<ClientConfig>) {
-        info!(
-            "Loomia client {} conectando em {}",
-            env!("CARGO_PKG_VERSION"),
-            config.server_url
+fn main() -> ExitCode {
+    let opts = parse_args();
+    let root = project_root();
+    println!(
+        "Loomia client {} (Ruzit) — servidor {} — jogador '{}'",
+        env!("CARGO_PKG_VERSION"),
+        opts.server,
+        opts.name
+    );
+
+    run(opts, root)
+}
+
+fn run(opts: Options, root: PathBuf) -> ExitCode {
+    if !root.is_dir() {
+        eprintln!(
+            "[Loomia] projeto Ruzit não encontrado em {}",
+            root.display()
         );
+        return ExitCode::FAILURE;
+    }
+
+    // Lidos por `game/config.luau` via `Process.Env`/`import`. Em Rust 2024
+    // `set_var` é unsafe (ainda estamos numa thread só, antes da engine subir).
+    unsafe {
+        env::set_var("LOOMIA_SERVER_URL", &opts.server);
+        env::set_var("LOOMIA_PLAYER_NAME", &opts.name);
+        if let Some(world) = &opts.world {
+            env::set_var("LOOMIA_WORLD", world);
+        }
+        if let Some(appearance) = &opts.appearance {
+            if let Ok(json) = serde_json::to_string(appearance) {
+                env::set_var("LOOMIA_APPEARANCE", json);
+            }
+        }
+    }
+
+    let fs = match load_project(&root, ENTRY) {
+        Ok(fs) => fs,
+        Err(err) => {
+            eprintln!("[Loomia] falha ao ler {}: {err}", root.display());
+            return ExitCode::FAILURE;
+        }
+    };
+
+    match ruzit::runtime::run_entry(fs, ENTRY) {
+        Ok(()) => ExitCode::SUCCESS,
+        Err(err) => {
+            eprintln!("[Loomia] erro: {err}");
+            ExitCode::FAILURE
+        }
     }
 }

@@ -1,0 +1,11 @@
+[package]
+name = "loomia-studio"
+description = "Loomia Studio — editor de mapas .loom sobre a engine Ruzit"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+# O editor é `Main.luau` + `editor/*.luau`; este binário só carrega o projeto.
+# `cargo run -p loomia-studio -- --server http://127.0.0.1:8080`
+[dependencies]
+ruzit = { path = "../Ruzit/Ruzit/runtime" }

@@ -1,2 +1,6 @@
+# O cliente/Studio agora embutem a engine Ruzit (Luau via mlua + JIT).
+# O `-fuse-ld=gold` (que o Bevy exigia) não resolve os símbolos anônimos
+# gerados pelo Luau — voltamos ao linker padrão do sistema.
+
 [build]
-rustflags = ["-C", "link-arg=-fuse-ld=gold"]
+rustflags = []

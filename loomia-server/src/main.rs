@@ -86,7 +86,13 @@ async fn main() {
     banner(&cfg, &game);
 
     let shutdown_game = game.clone();
-    axum::serve(listener, app)
+    // `ConnectInfo` é usado por `/api/launch` e `/api/maps` para checar se a
+    // requisição veio da máquina local; sem `into_make_service_with_connect_info`
+    // esses handlers falham com "Missing request extension".
+    axum::serve(
+        listener,
+        app.into_make_service_with_connect_info::<SocketAddr>(),
+    )
         .with_graceful_shutdown(shutdown_signal(shutdown_game))
         .await
         .expect("servidor falhou");
@@ -102,6 +108,8 @@ fn build_router(state: AppState) -> Router {
         .route("/api/status", get(api::status))
         .route("/api/worlds", get(api::worlds))
         .route("/api/worlds/{id}", get(api::world))
+        .route("/api/maps/{id}", get(api::map_file))
+        .route("/api/maps", post(api::save_map))
         .route("/api/player", post(api::register_player))
         .route("/api/players", get(api::list_players))
         .route("/api/launch", post(api::launch))

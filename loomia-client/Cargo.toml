@@ -1,15 +1,13 @@
 [package]
 name = "loomia-client"
-description = "Cliente 3D do Loomia (Bevy)"
+description = "Cliente 3D do Loomia (engine Ruzit + Luau)"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
 
+# O jogo em si é `game/*.luau`; este binário só carrega o projeto na engine.
+# `cargo run -p loomia-client -- --server ws://127.0.0.1:8080/ws`
 [dependencies]
 loomia-shared = { path = "../loomia-shared" }
-bevy.workspace = true
-serde.workspace = true
+ruzit = { path = "../Ruzit/Ruzit/runtime" }
 serde_json.workspace = true
-tungstenite = "0.27"
-crossbeam-channel = "0.5"
-rand = "0.9"

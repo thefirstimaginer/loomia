@@ -1,11 +1,15 @@
 //! Inicialização do cliente nativo a partir do site (botão "LAUNCH").
 //!
+//! O cliente é um projeto Luau rodando na engine Ruzit (não há mais Bevy), e
+//! seu binário ("lançador" do projeto) é pequeno — o custo de compilar é o da
+//! engine, uma única vez.
+//!
 //! O fluxo do launcher:
 //!
 //! 1. `/api/launch` chama [`Launcher::launch`], que **compila** o cliente se
 //!    necessário (`cargo build -p loomia-client`) e depois o inicia destacado,
 //!    passando `--server ws://host:port/ws --name <jogador>`.
-//! 2. O cliente mostra a janela "Carregando Loomia, Aguarde!" enquanto conecta.
+//! 2. O cliente passa pelo boot da engine enquanto conecta no WebSocket.
 //!
 //! Para usar um binário já existente (release, instalado no PATH etc.), defina
 //! `LOOMIA_CLIENT_COMMAND` — ex.: `LOOMIA_CLIENT_COMMAND=/usr/local/bin/loomia-client`.
@@ -184,8 +188,8 @@ impl Launcher {
         let logs_dir = self.inner.project_root.join("data").join("logs");
         let _ = tokio::fs::create_dir_all(&logs_dir).await;
         let log_path = logs_dir.join("client.log");
-        // `tungstenite`/Bevy escrevem muita coisa no stderr; guardamos em arquivo
-        // para não poluir o terminal do servidor.
+        // A engine escreve muita coisa no stderr (wgpu/winit); guardamos em
+        // arquivo para não poluir o terminal do servidor.
         let log_out = std::fs::OpenOptions::new().create(true).append(true).open(&log_path).ok();
         let log_err = std::fs::OpenOptions::new().create(true).append(true).open(&log_path).ok();
 
