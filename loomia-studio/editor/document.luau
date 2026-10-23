@@ -106,6 +106,61 @@ function Document:setSpawn(x, y, z)
 	self.world.spawn = { x, y, z }
 end
 
+function Document:setIdentity(id, name)
+	self:pushUndo()
+	if id and id ~= "" then
+		self.world.id = id
+	end
+	if name and name ~= "" then
+		self.world.name = name
+	end
+end
+
+-- Duplica um bloco com deslocamento (Ctrl+D / botão Duplicar).
+function Document:duplicateBlock(index, offset)
+	local source = self.world.blocks[index]
+	if not source then
+		return nil
+	end
+	local copy = Serde.Decode("json", Serde.Encode("json", source))
+	copy.position[1] = copy.position[1] + (offset or 1)
+	self:pushUndo()
+	self.world.blocks[#self.world.blocks + 1] = copy
+	return #self.world.blocks
+end
+
+-- Instala vários blocos de uma vez (presets do catálogo).
+function Document:addBlocks(blocks)
+	if not blocks or #blocks == 0 then
+		return 0
+	end
+	self:pushUndo()
+	local first = #self.world.blocks + 1
+	for _, block in ipairs(blocks) do
+		self.world.blocks[#self.world.blocks + 1] = block
+	end
+	return first
+end
+
+-- Lista os `.loom` da pasta de mapas.
+function Document.listMaps(dir)
+	dir = dir or "maps"
+	local ok, entries = pcall(function()
+		return IO.list(dir)
+	end)
+	if not ok then
+		return {}
+	end
+	local out = {}
+	for _, name in ipairs(entries) do
+		if name:match("%.loom$") then
+			out[#out + 1] = name:gsub("%.[^.]*$", "")
+		end
+	end
+	table.sort(out)
+	return out
+end
+
 function Document:setSky(rgb)
 	self:pushUndo()
 	self.world.skyColor = { rgb[1], rgb[2], rgb[3] }

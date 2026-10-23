@@ -95,10 +95,18 @@ function Scene:setSelection(index)
 end
 
 --- Destaque: contorno um pouco maior que o bloco selecionado.
+function Scene:setVisible(on)
+	self.hidden = not on
+	for _, part in pairs(self.parts) do
+		part.Render = on
+	end
+	self.outline.Render = on and (self.selection ~= nil)
+end
+
 function Scene:refreshHighlight()
 	local index = self.selection
 	local block = index and self._blocks and self._blocks[index]
-	if not block then
+	if not block or self.hidden then
 		self.outline.Render = false
 		return
 	end

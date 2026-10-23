@@ -12,7 +12,7 @@ local Serde = import("Serde")
 local config = {}
 
 config.server = "ws://127.0.0.1:8080/ws"
-config.playerName = "Jogador"
+config.playerName = "Socket7"
 config.world = "baseplate"
 config.appearance = nil
 

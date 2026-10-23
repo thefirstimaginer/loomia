@@ -611,3 +611,23 @@ footer {
     display: none;
   }
 }
+
+/* Nome do mapa na lista: botão "link" que seleciona o mapa para a prévia. */
+.link-button {
+  background: none;
+  border: 0;
+  padding: 0;
+  font: inherit;
+  font-weight: 600;
+  color: var(--ink);
+  cursor: pointer;
+}
+
+.link-button:hover {
+  color: #0f78be;
+  text-decoration: underline;
+}
+
+.launch-feedback code {
+  word-break: break-all;
+}

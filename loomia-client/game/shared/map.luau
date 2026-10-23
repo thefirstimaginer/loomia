@@ -81,7 +81,7 @@ function Map.applySky(world)
 	local rgb = (world and (world.skyColor or world.sky_color)) or { 150, 200, 240 }
 	if not Map.skyShader then
 		local ok, shader = pcall(function()
-			return Asset.GetAsset("Fragment", "shaders/sky.wgsl")
+			return Asset.GetAsset("Fragment", "shaders/sky.frag")
 		end)
 		if not ok then
 			return false

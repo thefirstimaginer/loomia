@@ -1,0 +1,15 @@
+{
+  "name": "loomia-masterserver",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "description": "Master server do Loomia: contas, catálogo de mapas, alocação de salas (Go) e handler loomia://",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node --watch server.js",
+    "check": "node --check server.js && node --test"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

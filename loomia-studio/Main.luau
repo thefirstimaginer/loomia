@@ -1,18 +1,24 @@
 --[[
 	Loomia Studio — editor de mapas do Loomia sobre a engine Ruzit.
 
-	Ferramentas (clicando no viewport):
-		clique           colocar um bloco na face apontada
-		Shift + clique   apagar o bloco apontado
-		Alt + clique     pintar (cor + material atuais)
-		Arrastar o bloco selecionado com LMB (ou setas do teclado) move 1 unidade
-		Câmera: RMB orbita, MMB faz pan, roda do mouse aproxima.
+	FERRAMENTAS (viewport)
+		LMB              seleciona o bloco apontado; sem alvo, coloca um bloco
+		Shift + LMB      apaga o bloco apontado
+		Alt + LMB        pinta o bloco apontado (cor + material atuais)
+		Ctrl + D         duplica o selecionado
+		Arrastar         move o bloco selecionado (passo 0.5; Shift = 0.25)
+		RMB              orbita a câmera        MMB  move (pan)
+		Roda             zoom                   F    foca no selecionado
+		[ ] - =          tamanho do bloco        G    liga/desliga a grade
+		P                spawn no bloco apontado
 
-	Arquivos:
-		Ctrl+S  POST /api/maps  (o servidor grava o .loom e recarrega o mundo)
-		        e também grava <mapsDir>/<id>.loom localmente
-		Ctrl+L  recarrega do servidor (GET /api/maps/{id})
-		Sem servidor no ar: o Studio abre uma baseplate vazia e só salva local.
+	ARQUIVO
+		Ctrl+N           mapa novo               Ctrl+O  abrir mapa
+		Ctrl+S           salvar (.loom + scripts)
+		F5               testar o jogo (Playtest)
+
+	ABAS (direita): INSPETOR (cor/material/tamanho/seleção), SCRIPTS (script
+	do mapa) e MAPA (nome, id, spawn, céu).
 ]]
 
 local Window = import("Window")
@@ -27,9 +33,14 @@ local Config = require("./editor/config")
 local Document = require("./editor/document")
 local Http = require("./editor/http")
 local Palette = require("./editor/palette")
+local Catalog = require("./editor/catalog")
 local Scene = require("./editor/scene")
 local Viewport = require("./editor/viewport")
 local UI = require("./editor/ui")
+local Sky = require("./editor/sky")
+local Scripts = require("./editor/scripts")
+local ScriptEditor = require("./editor/script_editor")
+local Playtest = require("./editor/playtest")
 
 local Vector = Primitives.Vector
 
@@ -39,19 +50,29 @@ local Vector = Primitives.Vector
 
 local editor = {
 	doc = nil,
+	scripts = nil,
 	scene = nil,
 	viewport = nil,
 	ui = nil,
 	http = nil,
+	scriptEditor = nil,
+	playtest = nil,
 	colorIndex = Palette.defaultColorIndex,
 	materialIndex = Palette.defaultMaterialIndex,
+	presetName = nil,
 	blockSize = { 1, 1, 1 },
-	step = 0.5, -- passo do arrastar (Shift = 0.25)
+	step = 0.5,
 	grid = true,
-	drag = nil, -- { origin = Vector, start = {position}, moved = false }
+	drag = nil,
 	lastMouse = { 0, 0 },
-	valid = false,
+	filePath = nil,
+	openIndex = 0,
 }
+
+local shift = false
+local alt = false
+local ctrl = false
+local keysDown = {}
 
 -- ---------------------------------------------------------------------------
 -- Helpers de bloco
@@ -75,36 +96,35 @@ local function newBlock(position, size)
 	}
 end
 
---- Empilha o bloco na face do bloco atingido (ou no chão, se não houve acerto).
-local function placementPosition(hitPosition, normal, size)
-	local x, y, z
-	if hitPosition then
-		x = hitPosition.X + normal.X * size[1] * 0.5
-		y = hitPosition.Y + normal.Y * size[2] * 0.5
-		z = hitPosition.Z + normal.Z * size[3] * 0.5
-	else
-		-- Sem acerto: projeta o raio no plano y = 0 (topo da baseplate).
-		local origin, forward = editor.viewport:centerRay()
-		local t = 0
-		if math.abs(forward.Y) > 1e-4 then
-			t = (0 - origin.Y) / forward.Y
-		end
-		x = origin.X + forward.X * t
-		z = origin.Z + forward.Z * t
-		y = size[2] * 0.5
+local function snap(position, size)
+	if not editor.grid then
+		return position
 	end
-	-- Encaixa no meio da célula (grade de 1 unidade).
-	if editor.grid then
-		x = math.floor(x) + 0.5
-		z = math.floor(z) + 0.5
-		-- Altura: encaixa o centro na grade apenas para blocos de altura ímpar.
-		if size[2] % 2 == 1 then
-			y = math.floor(y) + 0.5
-		else
-			y = math.floor(y + 0.5)
-		end
+	local x = math.floor(position[1]) + 0.5
+	local z = math.floor(position[3]) + 0.5
+	local y
+	if size[2] % 2 == 1 then
+		y = math.floor(position[2]) + 0.5
+	else
+		y = math.floor(position[2] + 0.5)
 	end
 	return { x, y, z }
+end
+
+local function placementPosition(hitPosition, normal, size)
+	if hitPosition then
+		return snap({
+			hitPosition.X + normal.X * size[1] * 0.5,
+			hitPosition.Y + normal.Y * size[2] * 0.5,
+			hitPosition.Z + normal.Z * size[3] * 0.5,
+		}, size)
+	end
+	local origin, forward = editor.viewport:centerRay()
+	local t = 0
+	if math.abs(forward.Y) > 1e-4 then
+		t = (0 - origin.Y) / forward.Y
+	end
+	return snap({ origin.X + forward.X * t, size[2] * 0.5, origin.Z + forward.Z * t }, size)
 end
 
 local function refreshScene()
@@ -114,40 +134,148 @@ local function refreshScene()
 end
 
 local function refreshUi()
-	local blocks = editor.doc.world.blocks
+	local world = editor.doc.world
 	editor.ui:setSize(editor.blockSize)
-	editor.ui:setMapInfo(editor.doc.world, #blocks, editor.doc.world.spawn)
+	editor.ui:setMapInfo(world, #world.blocks, world.spawn, editor.filePath)
+	local selected = editor.scene.selection
+	local block = selected and world.blocks[selected]
+	if block then
+		editor.ui:setSelection(string.format(
+			"#%d  %.1f, %.1f, %.1f",
+			selected,
+			block.position[1],
+			block.position[2],
+			block.position[3]
+		))
+	else
+		editor.ui:setSelection(nil)
+	end
+	if editor.scripts then
+		editor.ui:setScripts(editor.scripts, editor.scripts.active)
+	end
+end
+
+local function refreshSky()
+	Sky.apply(editor.doc.world)
+end
+
+local function reloadAll()
+	editor.scene.selection = nil
+	refreshScene()
+	refreshUi()
+	refreshSky()
+	editor.viewport:focus(editor.doc.world.spawn, { 8, 8, 8 })
 end
 
 -- ---------------------------------------------------------------------------
--- Ações
+-- Arquivos
 -- ---------------------------------------------------------------------------
 
-local function save()
-	local ok, message = editor.http:saveMap(editor.doc.world)
-	local path = Config.mapsDir .. "/" .. tostring(editor.doc.world.id or "baseplate") .. ".loom"
+local function loomPath(id)
+	return Config.mapsDir .. "/" .. tostring(id) .. ".loom"
+end
+
+local function save(quiet)
+	local world = editor.doc.world
+	local path = editor.filePath or loomPath(world.id or "baseplate")
 	local localOk, localMessage = editor.doc:saveLocal(path)
-	if ok and localOk then
-		editor.ui:setStatus("salvo no servidor e em " .. path, UI.OK)
-	elseif localOk then
-		editor.ui:setStatus("servidor indisponível (" .. message .. "); " .. localMessage, UI.WARN)
-	else
-		editor.ui:setStatus("falha ao salvar: " .. tostring(message) .. " / " .. tostring(localMessage), UI.WARN)
+	editor.filePath = path
+	local scriptsOk = true
+	local scriptsMessage = nil
+	if editor.scripts then
+		scriptsOk, scriptsMessage = editor.scripts:save(path)
+	end
+	local serverOk, serverMessage = editor.http:saveMap(world)
+	if not quiet then
+		if localOk and serverOk then
+			editor.ui:setStatus("salvo: " .. path .. " (cópia no servidor)", UI.OK)
+		elseif localOk then
+			editor.ui:setStatus("salvo em " .. path .. "  — servidor: " .. tostring(serverMessage), UI.WARN)
+		else
+			editor.ui:setStatus("falha ao salvar: " .. tostring(localMessage), UI.DANGER)
+		end
+		if not scriptsOk then
+			editor.ui:setStatus("mapa salvo, scripts falharam: " .. tostring(scriptsMessage), UI.WARN)
+		end
+	end
+	return localOk
+end
+
+--- Abre um mapa local (`maps/<id>.loom`) e seus scripts.
+local function openMap(id)
+	local path = loomPath(id)
+	local doc, err = Document.loadLocal(path)
+	if not doc then
+		editor.ui:setStatus("não abri '" .. tostring(id) .. "': " .. tostring(err), UI.DANGER)
+		return false
+	end
+	editor.doc = doc
+	editor.scripts = Scripts.load(path)
+	editor.filePath = path
+	reloadAll()
+	editor.scriptEditor.scripts = editor.scripts
+	editor.scriptEditor:load(editor.scripts.active)
+	editor.ui:setScripts(editor.scripts, editor.scripts.active)
+	editor.ui:setStatus("mapa aberto: " .. path, UI.OK)
+	print("[Studio] mapa aberto: " .. path)
+	return true
+end
+
+--- Cria um mapa novo (baseplate) e zera os scripts.
+local function newMap()
+	local id = "mapa" .. tostring(os.time()):sub(-6)
+	editor.doc = Document.new(Document.empty(id, "Novo mapa"))
+	editor.scripts = Scripts.new()
+	editor.filePath = nil
+	reloadAll()
+	editor.scriptEditor.scripts = editor.scripts
+	editor.scriptEditor:load(editor.scripts.active)
+	editor.ui:setStatus("mapa novo — Ctrl+S salva em maps/" .. id .. ".loom", UI.OK)
+end
+
+local function toggleScriptEditor()
+	local open = not editor.scriptEditor.open
+	editor.scriptEditor.active = editor.scripts.active
+	editor.scriptEditor:load(editor.scripts.active)
+	editor.scriptEditor:setVisible(open)
+	editor.ui:setVisible(not open)
+	Mouse.Unlock()
+end
+
+-- ---------------------------------------------------------------------------
+-- Playtest
+-- ---------------------------------------------------------------------------
+
+local function startPlaytest()
+	if editor.playtest and editor.playtest.running then
+		return
+	end
+	editor.playtest = Playtest.new(editor.doc, editor.scripts, {
+		scene = editor.scene,
+		ui = editor.ui,
+		camera = editor.camera,
+		width = 1280,
+		height = 720,
+	})
+	editor.playtest:start()
+	for key in pairs(keysDown) do
+		keysDown[key] = false
+	end
+	editor.ui:setStatus("playtest em andamento — Esc volta ao editor", UI.OK)
+end
+
+local function stopPlaytest()
+	if editor.playtest then
+		editor.playtest:stop()
+		editor.playtest = nil
+		editor.ui:setStatus("playtest encerrado", UI.MUTED)
+		refreshUi()
 	end
 end
 
-local function reload()
-	local world, err = editor.http:getMap(Config.world)
-	if world then
-		editor.doc = Document.new(world)
-		editor.scene.selection = nil
-		refreshScene()
-		refreshUi()
-		editor.ui:setStatus("mapa '" .. tostring(world.name or world.id) .. "' recarregado do servidor", UI.OK)
-	else
-		editor.ui:setStatus("não recarreguei (" .. tostring(err) .. "); mantendo o mapa atual", UI.WARN)
-	end
-end
+-- ---------------------------------------------------------------------------
+-- Ações de edição
+-- ---------------------------------------------------------------------------
 
 local function pickAtCrosshair()
 	local origin, forward = editor.viewport:centerRay()
@@ -159,15 +287,27 @@ local function placeBlock()
 	local target = placementPosition(position, normal, editor.blockSize)
 	local newIndex = editor.doc:addBlock(newBlock(target, editor.blockSize))
 	refreshScene()
+	editor.scene:setSelection(newIndex)
 	refreshUi()
-	editor.ui:setStatus(
-		string.format("bloco #%d em %.1f, %.1f, %.1f", newIndex, target[1], target[2], target[3]),
-		UI.OK
-	)
+	editor.ui:setStatus(string.format("bloco #%d em %.1f, %.1f, %.1f", newIndex, target[1], target[2], target[3]), UI.OK)
 end
 
-local function deleteBlock()
-	local index = pickAtCrosshair()
+local function placePreset(name)
+	local _index, position, normal = pickAtCrosshair()
+	local base = placementPosition(position, normal, { 1, 1, 1 })
+	local blocks, entry = Catalog.instantiate(name, base)
+	if not blocks then
+		editor.ui:setStatus("preset desconhecido: " .. tostring(name), UI.DANGER)
+		return
+	end
+	editor.doc:addBlocks(blocks)
+	refreshScene()
+	refreshUi()
+	editor.ui:setStatus(string.format("'%s' inserido (%d blocos)", entry.name, #blocks), UI.OK)
+end
+
+local function deleteSelected()
+	local index = editor.scene.selection or pickAtCrosshair()
 	if not index then
 		editor.ui:setStatus("nada para apagar", UI.MUTED)
 		return
@@ -175,11 +315,11 @@ local function deleteBlock()
 	editor.doc:removeBlock(index)
 	refreshScene()
 	refreshUi()
-	editor.ui:setStatus("bloco #" .. index .. " apagado", UI.OK)
+	editor.ui:setStatus("bloco apagado", UI.OK)
 end
 
-local function paintBlock()
-	local index = pickAtCrosshair()
+local function paintSelected()
+	local index = editor.scene.selection or pickAtCrosshair()
 	if not index then
 		editor.ui:setStatus("nada para pintar", UI.MUTED)
 		return
@@ -189,43 +329,48 @@ local function paintBlock()
 	block.material = currentMaterial()
 	editor.doc.dirty = true
 	editor.scene:movePart(index, block)
-	editor.ui:setStatus("bloco #" .. index .. " pintado com " .. currentMaterial(), UI.OK)
+	editor.ui:setStatus("bloco pintado", UI.OK)
+end
+
+local function duplicateSelected()
+	local index = editor.scene.selection
+	if not index then
+		editor.ui:setStatus("selecione um bloco para duplicar", UI.MUTED)
+		return
+	end
+	local newIndex = editor.doc:duplicateBlock(index, 1)
+	refreshScene()
+	editor.scene:setSelection(newIndex)
+	refreshUi()
+	editor.ui:setStatus("bloco duplicado -> #" .. tostring(newIndex), UI.OK)
 end
 
 local function setSpawnHere()
-	local index, position = pickAtCrosshair()
-	if not index or not position then
+	local index = editor.scene.selection or pickAtCrosshair()
+	if not index then
 		editor.ui:setStatus("aponte para um bloco para definir o spawn", UI.MUTED)
 		return
 	end
-	local hitBlock = editor.doc.world.blocks[index]
-	editor.doc:setSpawn(hitBlock.position[1], hitBlock.position[2] + hitBlock.size[2] * 0.5 + 0.2, hitBlock.position[3])
+	local block = editor.doc.world.blocks[index]
+	editor.doc:setSpawn(block.position[1], block.position[2] + block.size[2] * 0.5 + 0.2, block.position[3])
 	refreshUi()
-	editor.ui:setStatus("spawn definido no bloco #" .. index, UI.OK)
+	editor.ui:setStatus("spawn definido", UI.OK)
 end
 
 -- ---------------------------------------------------------------------------
 -- Input
 -- ---------------------------------------------------------------------------
 
-local keysDown = {}
-local shift = false
-local alt = false
-local ctrl = false
-
 local function isModifier(name)
-	local modifiers = {
-		LeftShift = true,
-		RightShift = true,
-		LeftAlt = true,
-		RightAlt = true,
-		LeftControl = true,
-		RightControl = true,
-	}
-	return modifiers[name] == true
+	return name == "LeftShift"
+		or name == "RightShift"
+		or name == "LeftAlt"
+		or name == "RightAlt"
+		or name == "LeftControl"
+		or name == "RightControl"
 end
 
-local function modifier(name, down)
+local function setModifier(name, down)
 	if name == "LeftShift" or name == "RightShift" then
 		shift = down
 	elseif name == "LeftAlt" or name == "RightAlt" then
@@ -235,112 +380,180 @@ local function modifier(name, down)
 	end
 end
 
+local function handleEditorKey(key)
+	local ctrlKey = ctrl or keysDown.LeftControl or keysDown.RightControl
+	if ctrlKey and key == "S" then
+		save(false)
+	elseif ctrlKey and key == "N" then
+		newMap()
+	elseif ctrlKey and key == "O" then
+		local maps = Document.listMaps(Config.mapsDir)
+		if #maps > 0 then
+			editor.openIndex = (editor.openIndex % #maps) + 1
+			openMap(maps[editor.openIndex])
+		else
+			editor.ui:setStatus("nenhum .loom em " .. Config.mapsDir, UI.WARN)
+		end
+	elseif ctrlKey and key == "Z" then
+		if editor.doc:undo() then
+			refreshScene()
+			refreshUi()
+		end
+	elseif ctrlKey and key == "Y" then
+		if editor.doc:redo() then
+			refreshScene()
+			refreshUi()
+		end
+	elseif ctrlKey and key == "D" then
+		duplicateSelected()
+	elseif ctrlKey and key == "E" then
+		toggleScriptEditor()
+	elseif key == "F5" then
+		startPlaytest()
+	elseif key == "Delete" or key == "Backspace" then
+		deleteSelected()
+	elseif key == "G" then
+		editor.grid = not editor.grid
+		editor.ui:setStatus("grade " .. (editor.grid and "ligada" or "desligada"), UI.MUTED)
+	elseif key == "F" then
+		local selected = editor.scene.selection
+		local block = selected and editor.doc.world.blocks[selected]
+		if block then
+			editor.viewport:focus(block.position, block.size)
+		end
+	elseif key == "P" then
+		setSpawnHere()
+	elseif key == "LeftBracket" then
+		editor.blockSize[1] = math.max(1, editor.blockSize[1] - 1)
+		editor.blockSize[3] = editor.blockSize[1]
+		refreshUi()
+	elseif key == "RightBracket" then
+		editor.blockSize[1] = math.min(16, editor.blockSize[1] + 1)
+		editor.blockSize[3] = editor.blockSize[1]
+		refreshUi()
+	elseif key == "Minus" then
+		editor.blockSize[2] = math.max(1, editor.blockSize[2] - 1)
+		refreshUi()
+	elseif key == "Equals" then
+		editor.blockSize[2] = math.min(16, editor.blockSize[2] + 1)
+		refreshUi()
+	elseif key == "One" then
+		editor.materialIndex = 1
+		editor.ui:selectMaterial(1)
+	elseif key == "Two" then
+		editor.materialIndex = 2
+		editor.ui:selectMaterial(2)
+	elseif key == "Three" then
+		editor.materialIndex = 3
+		editor.ui:selectMaterial(3)
+	elseif key == "Four" then
+		editor.materialIndex = 4
+		editor.ui:selectMaterial(4)
+	elseif key == "Five" then
+		editor.materialIndex = 5
+		editor.ui:selectMaterial(5)
+	elseif key == "Six" then
+		editor.materialIndex = 6
+		editor.ui:selectMaterial(6)
+	end
+end
+
 local function bindInput()
 	Keyboard.InputChanged:Connect(function(_id, key, kind)
 		local down = kind == "Begin"
 		if isModifier(key) then
-			modifier(key, down)
+			setModifier(key, down)
 			return
 		end
 		keysDown[key] = down
-		if not down then
+
+		if editor.playtest and editor.playtest.running then
+			editor.playtest:onKey(key, down)
 			return
 		end
-
-		local ctrlKey = ctrl or keysDown.LeftControl or keysDown.RightControl
-		if ctrlKey and key == "S" then
-			save()
-		elseif ctrlKey and key == "L" then
-			reload()
-		elseif ctrlKey and key == "Z" then
-			if editor.doc:undo() then
-				refreshScene()
-				refreshUi()
-				editor.ui:setStatus("desfeito", UI.MUTED)
-			end
-		elseif ctrlKey and key == "Y" then
-			if editor.doc:redo() then
-				refreshScene()
-				refreshUi()
-				editor.ui:setStatus("refeito", UI.MUTED)
-			end
-		elseif key == "Delete" or key == "Backspace" then
-			local selected = editor.scene.selection
-			if selected then
-				editor.doc:removeBlock(selected)
-				refreshScene()
-				refreshUi()
-			end
-		elseif key == "G" then
-			editor.grid = not editor.grid
-			editor.ui:setStatus("grade " .. (editor.grid and "ligada" or "desligada"), UI.MUTED)
-		elseif key == "F" then
-			local selected = editor.scene.selection
-			local block = selected and editor.doc.world.blocks[selected]
-			if block then
-				editor.viewport:focus(block.position, block.size)
-			end
-		elseif key == "P" then
-			setSpawnHere()
-		elseif key == "BracketLeft" then
-			local s = editor.blockSize
-			s[1] = math.max(1, s[1] - 1)
-			s[3] = math.max(1, s[3] - 1)
-			refreshUi()
-		elseif key == "BracketRight" then
-			local s = editor.blockSize
-			s[1] = math.min(16, s[1] + 1)
-			s[3] = math.min(16, s[3] + 1)
-			refreshUi()
-		elseif key == "Minus" then
-			editor.blockSize[2] = math.max(1, editor.blockSize[2] - 1)
-			refreshUi()
-		elseif key == "Equal" then
-			editor.blockSize[2] = math.min(16, editor.blockSize[2] + 1)
-			refreshUi()
+		if editor.scriptEditor.open then
+			editor.scriptEditor:onKey(key, down, ctrl or keysDown.LeftControl or keysDown.RightControl)
+			return
+		end
+		if down then
+			handleEditorKey(key)
 		end
 	end)
 
 	Mouse.InputReceived:Connect(function(button, kind)
 		local down = kind == "Begin"
+		if editor.playtest and editor.playtest.running then
+			editor.playtest:onMouseButton(button, down)
+			return
+		end
+		if editor.scriptEditor.open then
+			if button == "MouseButton1" and down then
+				local p = Mouse.Position
+				editor.scriptEditor:onClick(p.X, p.Y)
+			end
+			return
+		end
 		if button == "MouseButton3" then
 			editor.cameraDragging = down
-		elseif button == "MouseButton1" and down then
-			if shift then
-				deleteBlock()
-			elseif alt then
-				paintBlock()
+			if down then
+				Mouse.Lock()
 			else
-				-- Seleciona o bloco apontado; se nada, coloca um novo.
-				local index = pickAtCrosshair()
-				if index then
-					editor.scene:setSelection(index)
-					local block = editor.doc.world.blocks[index]
-					editor.drag = {
-						origin = Vector.new(block.position[1], block.position[2], block.position[3]),
-						index = index,
-						moved = false,
-					}
-					editor.ui:setStatus("selecionado #" .. index, UI.ACCENT)
-				else
-					placeBlock()
-				end
+				Mouse.Unlock()
 			end
-		elseif button == "MouseButton1" and not down then
+			return
+		end
+		if button ~= "MouseButton1" then
+			return
+		end
+		if not down then
 			editor.drag = nil
+			return
+		end
+
+		local p = Mouse.Position
+		local target = editor.ui:click(p.X, p.Y)
+		if target ~= "viewport" then
+			return
+		end
+		if shift then
+			deleteSelected()
+		elseif alt then
+			paintSelected()
+		elseif editor.presetName then
+			placePreset(editor.presetName)
+		else
+			local index = pickAtCrosshair()
+			if index then
+				editor.scene:setSelection(index)
+				local block = editor.doc.world.blocks[index]
+				editor.drag = {
+					origin = Vector.new(block.position[1], block.position[2], block.position[3]),
+					index = index,
+					moved = false,
+				}
+				refreshUi()
+			else
+				placeBlock()
+			end
 		end
 	end)
 
-	Mouse.Moved:Connect(function(pos, delta)
-		editor.lastMouse = { pos.X, pos.Y }
+	Mouse.Moved:Connect(function(_pos, delta)
+		local p = Mouse.Position
+		editor.lastMouse = { p.X, p.Y }
+		if editor.playtest and editor.playtest.running then
+			editor.playtest:onMouseMove(delta)
+			return
+		end
+		if editor.scriptEditor.open then
+			return
+		end
 		if editor.cameraDragging then
 			editor.viewport:orbit(delta.X, delta.Y)
 		elseif editor.drag then
-			-- Arrasta o bloco selecionado na horizontal.
 			local block = editor.doc.world.blocks[editor.drag.index]
 			local step = shift and 0.25 or editor.step
-			local amount = delta.X * step * 0.08
-			block.position[1] = block.position[1] + amount
+			block.position[1] = block.position[1] + delta.X * step * 0.08
 			block.position[3] = block.position[3] + delta.Y * step * 0.08
 			editor.doc.dirty = true
 			editor.drag.moved = true
@@ -350,18 +563,84 @@ local function bindInput()
 	end)
 
 	Mouse.Scrolled:Connect(function(_dx, dy)
-		editor.viewport:zoom(dy)
-	end)
-
-	-- Paleta por teclado: 1-6 escolhe o material.
-	Keyboard.InputChanged:Connect(function(_id, key, kind)
-		if kind ~= "Begin" then
+		if editor.playtest and editor.playtest.running then
+			editor.playtest:onScroll(dy)
 			return
 		end
-		local number = tonumber(key)
-		if number and number >= 1 and number <= #Palette.materials then
-			editor.materialIndex = number
-			editor.ui:selectMaterial(number)
+		if editor.scriptEditor.open then
+			return
+		end
+		editor.viewport:zoom(dy)
+	end)
+end
+
+-- ---------------------------------------------------------------------------
+-- UI handlers
+-- ---------------------------------------------------------------------------
+
+local function bindUi()
+	editor.ui:onButton("new", newMap)
+	editor.ui:onButton("open", function()
+		local maps = Document.listMaps(Config.mapsDir)
+		if #maps == 0 then
+			editor.ui:setStatus("nenhum .loom em " .. Config.mapsDir, UI.WARN)
+			return
+		end
+		-- ABRIR percorre a lista de `.loom` encontrados.
+		editor.openIndex = (editor.openIndex % #maps) + 1
+		openMap(maps[editor.openIndex])
+	end)
+	editor.ui:onButton("save", function()
+		save(false)
+	end)
+	editor.ui:onButton("play", startPlaytest)
+	editor.ui:onButton("deleteSel", deleteSelected)
+	editor.ui:onButton("dupSel", duplicateSelected)
+	editor.ui:onButton("setSpawn", setSpawnHere)
+	editor.ui:onButton("scriptNew", function()
+		local name = "script" .. tostring(#editor.scripts.files + 1)
+		editor.scripts:set(name, Scripts.TEMPLATE)
+		editor.scripts.active = name
+		editor.scriptEditor.active = name
+		editor.scriptEditor:load(name)
+		editor.ui:setScripts(editor.scripts, name)
+		toggleScriptEditor()
+	end)
+	editor.ui:onButton("scriptEdit", toggleScriptEditor)
+	editor.ui:onButton("scriptRun", startPlaytest)
+
+	-- Paleta: o preset escolhido fica "armado" para o próximo clique no mundo.
+	for index, entry in ipairs(Catalog.list()) do
+		editor.ui:onPreset(index, function()
+			if editor.presetName == entry.name then
+				editor.presetName = nil
+				editor.ui:setInfo("bloco simples (1x1x1)")
+			else
+				editor.presetName = entry.name
+				editor.ui:setInfo("preset: " .. entry.name)
+			end
+			editor.ui:selectPreset(editor.presetName)
+		end)
+	end
+
+	editor.ui:onColor(function(index)
+		editor.colorIndex = index
+	end)
+	editor.ui:onMaterial(function(index)
+		editor.materialIndex = index
+	end)
+	editor.ui:onSky(function(rgb)
+		editor.doc:setSky(rgb)
+		refreshSky()
+		refreshUi()
+	end)
+	editor.ui:onScript(function(index)
+		local file = editor.scripts.files[index]
+		if file then
+			editor.scripts.active = file.name
+			editor.scriptEditor.active = file.name
+			editor.scriptEditor:load(file.name)
+			editor.ui:setScripts(editor.scripts, file.name)
 		end
 	end)
 end
@@ -372,8 +651,10 @@ end
 
 local lastFrame = 0
 
-local function update(dt)
-	-- Pan com WASD.
+local function updateEditor(dt)
+	if editor.scriptEditor.open then
+		return
+	end
 	local forward, right = 0, 0
 	if keysDown.W or keysDown.Up then
 		forward = 1
@@ -391,20 +672,14 @@ local function update(dt)
 		editor.viewport:pan(forward, right, dt)
 	end
 
-	local blocks = editor.doc.world.blocks
-	local status = string.format(
-		"%s   |   %d blocos   |   FPS %d   |   pos %.1f, %.1f, %.1f",
+	local world = editor.doc.world
+	editor.ui:setStatus(string.format(
+		"%s  |  %d blocos  |  FPS %d  |  %s",
 		editor.doc.dirty and "não salvo" or "salvo",
-		#blocks,
+		#world.blocks,
 		math.floor(GPU.FrameStats().FPS or 0),
-		editor.viewport.target[1],
-		editor.viewport.target[2],
-		editor.viewport.target[3]
-	)
-	if editor.drag and editor.drag.moved then
-		status = status .. "   |   arrastando #" .. editor.drag.index
-	end
-	editor.ui:setStatus(status, editor.doc.dirty and UI.WARN or UI.MUTED)
+		editor.presetName and ("preset " .. editor.presetName) or "bloco simples"
+	), editor.doc.dirty and UI.WARN or UI.MUTED)
 end
 
 -- ---------------------------------------------------------------------------
@@ -417,62 +692,81 @@ camera.FOV = 65
 camera.Near = 0.1
 camera.Far = 3000
 GPU.SetMaxFrameRate(120)
+editor.camera = camera
 
 editor.http = Http.new(Config.server)
-
--- Carrega o mapa do servidor numa thread (o HTTP é bloqueante). Enquanto
--- isso, o Studio já abre com a baseplate vazia.
-local loadedFromServer = false
 editor.doc = Document.new(Document.empty(Config.world, "Novo mapa"))
+editor.scripts = Scripts.new()
 editor.scene = Scene.new()
 editor.viewport = Viewport.new(camera)
 
-local width, height = 1280, 720
-editor.ui = UI.new(width, height)
-editor.ui:build(Palette, Palette.materials)
+editor.ui = UI.new(1280, 720)
+editor.ui:build(Palette, Palette.materials, Catalog.list())
 editor.ui:selectColor(editor.colorIndex)
 editor.ui:selectMaterial(editor.materialIndex)
+editor.ui:setScripts(editor.scripts, editor.scripts.active)
+
+editor.scriptEditor = ScriptEditor.new(editor.scripts, {
+	width = 1280,
+	height = 720,
+	onClose = function()
+		editor.ui:setVisible(true)
+	end,
+	onSave = function()
+		save(false)
+		editor.scriptEditor:setStatus("salvo", UI.OK)
+	end,
+	isShift = function()
+		return shift
+	end,
+})
+editor.scriptEditor:build()
+editor.scriptEditor:setVisible(false)
 
 refreshScene()
 refreshUi()
-	local loadedText = "servidor fora do ar — modo local"
-	local loadedColor = UI.WARN
-	if loadedFromServer then
-		loadedText = "mapa carregado do servidor"
-		loadedColor = UI.OK
-	end
-	editor.ui:setStatus(loadedText, loadedColor)
+refreshSky()
+editor.viewport:focus(editor.doc.world.spawn, { 8, 8, 8 })
+editor.ui:setStatus("carregando mapa…", UI.MUTED)
+print("[Studio] status ok, primitivas", #editor.ui.primitives)
 
--- Centra a câmera no spawn.
-local spawn = editor.doc.world.spawn
-editor.viewport.target = {
-	spawn[1],
-	spawn[2] + 2,
-	spawn[3],
-}
-editor.viewport:apply()
-
--- Baixa o mapa do servidor em segundo plano e substitui o documento.
+-- Tenta o servidor primeiro; se não houver, abre o `.loom` local.
 Task.Spawn(function()
 	local world, err = editor.http:getMap(Config.world)
 	if world then
 		editor.doc = Document.new(world)
-		loadedFromServer = true
-		refreshScene()
-		refreshUi()
-		editor.ui:setStatus("mapa carregado do servidor", UI.OK)
-		print("[Studio] mapa carregado: " .. tostring(world.name))
-	else
-		editor.ui:setStatus("servidor fora do ar — modo local (" .. tostring(err) .. ")", UI.WARN)
-		print("[Studio] sem servidor: " .. tostring(err))
+		editor.filePath = loomPath(world.id or Config.world)
+		editor.scripts = Scripts.load(editor.filePath)
+		editor.scriptEditor.scripts = editor.scripts
+		editor.scriptEditor:load(editor.scripts.active)
+		reloadAll()
+		editor.ui:setScripts(editor.scripts, editor.scripts.active)
+		editor.ui:setStatus("mapa '" .. tostring(world.name) .. "' carregado do servidor", UI.OK)
+		print("[Studio] mapa carregado do servidor: " .. tostring(world.name))
+		return
+	end
+	if not openMap(Config.world) then
+		editor.ui:setStatus("servidor fora do ar (" .. tostring(err) .. "); mapa novo", UI.WARN)
 	end
 end)
 
+print("[Studio] boot: bind")
+bindUi()
+print("[Studio] ui ok")
 bindInput()
+print("[Studio] input ok")
 
 Process.Heartbeat:Connect(function(dt)
 	local now = os.clock()
 	local frameDt = math.min(now - lastFrame, 0.1)
 	lastFrame = now
-	update(frameDt)
+	if editor.playtest then
+		editor.playtest:update(frameDt)
+		if editor.playtest.requestStop then
+			stopPlaytest()
+		end
+	else
+		updateEditor(frameDt)
+	end
+	local _ = dt
 end)

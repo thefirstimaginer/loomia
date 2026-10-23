@@ -79,6 +79,23 @@ function Hud.new()
 		self.primitives[#self.primitives + 1] = line
 	end
 
+	-- Caixa de digitação: aparece só enquanto o chat está aberto.
+	local inputY = 520 + MAX_LINES * LINE_HEIGHT + 6
+	self.inputPanel = box(560, 30, 16, inputY, Color3.new(0.10, 0.11, 0.15))
+	self.inputPanel.Transparency = 0.05
+	self.inputPrefix = label("Dizendo:", 14, 26, inputY + 7, Color3.new(0.55, 0.85, 1.0))
+	self.inputText = label("", 14, 96, inputY + 7, Color3.new(1, 1, 1))
+	self.inputHint = label("", 12, 26, inputY + 36, Color3.new(0.55, 0.6, 0.68))
+	self.primitives[#self.primitives + 1] = self.inputPanel
+	self.primitives[#self.primitives + 1] = self.inputPrefix
+	self.primitives[#self.primitives + 1] = self.inputText
+	self.primitives[#self.primitives + 1] = self.inputHint
+	self.inputPanel.Visible = false
+	self.inputPrefix.Visible = false
+	self.inputText.Visible = false
+	self.inputHint.Visible = false
+	self.hintTimer = 0
+
 	-- Diagnóstico (canto superior direito).
 	self.stats = label("", 13, 900, 16, Color3.new(0.72, 0.75, 0.8))
 	table.insert(self.primitives, self.stats)
@@ -142,6 +159,36 @@ function Hud:setStats(text)
 	if text ~= self.lastStats then
 		self.lastStats = text
 		self.stats.Text = text
+	end
+end
+
+-- Mostra/esconde a caixa "Dizendo:" do chat.
+-- `open` controla a caixa; `hint` é a dica de atalho (some após 3 s).
+function Hud:setChatInput(open, text, hint)
+	local visible = open == true
+	self.inputPanel.Visible = visible
+	self.inputPrefix.Visible = visible
+	self.inputText.Visible = visible
+
+	if visible then
+		local cursor = (math.floor(os.time() * 2) % 2 == 0) and "|" or " "
+		self.inputText.Text = (text or "") .. cursor
+	end
+
+	if hint and hint ~= "" then
+		self.inputHint.Text = hint
+		self.hintTimer = 3.0
+	end
+	self.inputHint.Visible = (self.hintTimer or 0) > 0
+end
+
+-- Conta o tempo da dica do chat (chamado 1x por frame).
+function Hud:update(dt)
+	if (self.hintTimer or 0) > 0 then
+		self.hintTimer = self.hintTimer - dt
+		if self.hintTimer <= 0 then
+			self.inputHint.Visible = false
+		end
 	end
 end
 

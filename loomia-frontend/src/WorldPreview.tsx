@@ -4,9 +4,9 @@ import type { Block, WorldMap } from './api'
 /**
  * Prévia 3D do mundo no site (canvas 2D com projeção isométrica).
  *
- * O jogo de verdade é o cliente nativo em Rust/Bevy; este canvas serve para o
- * visitante ver o mapa antes de lançar o jogo — é leve (sem WebGL / sem três.js)
- * e usa exatamente os mesmos dados de `/api/worlds/:id`.
+ * O jogo de verdade é o cliente nativo em LOVR (Lua); este canvas serve para
+ * o visitante ver o mapa antes de lançar o jogo — é leve (sem WebGL / sem
+ * three.js) e usa exatamente os mesmos dados de `/api/maps/:id`.
  */
 export function WorldPreview({ map }: { map: WorldMap | null }) {
   const canvasRef = useRef<HTMLCanvasElement>(null)

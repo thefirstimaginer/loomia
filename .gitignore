@@ -1,2 +1,19 @@
 
 /target
+/data
+/lovr-0.19.0
+Ruzit
+
+# Game server (Go): binário local e cache de build
+/loomia-gameserver/loomia-gameserver
+/loomia-gameserver/loomia-gameserver.exe
+
+# Site
+/loomia-frontend/dist
+/loomia-frontend/node_modules
+
+# Master server: banco/dados locais e handler gerado
+/loomia-masterserver/node_modules
+/loomia-masterserver/data/
+/loomia-masterserver/public/download/
+/data

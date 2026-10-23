@@ -1,5 +1,11 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { api, type LaunchStatus, type ServerStatus, type WorldInfo, type WorldMap } from './api'
+import {
+  api,
+  type LaunchResponse,
+  type MapInfo,
+  type Status,
+  type WorldMap,
+} from './api'
 import { WorldPreview } from './WorldPreview'
 
 const HATS = [
@@ -22,14 +28,15 @@ function hexToRgb(hex: string): [number, number, number] {
 
 function statusLabel(state: 'checking' | 'online' | 'offline') {
   if (state === 'checking') return 'verificando…'
-  if (state === 'online') return 'servidor online'
-  return 'servidor offline'
+  if (state === 'online') return 'lobby online'
+  return 'lobby offline'
 }
 
 export default function App() {
-  const [status, setStatus] = useState<ServerStatus | null>(null)
+  const [status, setStatus] = useState<Status | null>(null)
   const [connection, setConnection] = useState<'checking' | 'online' | 'offline'>('checking')
-  const [worlds, setWorlds] = useState<WorldInfo[]>([])
+  const [maps, setMaps] = useState<MapInfo[]>([])
+  const [selectedMap, setSelectedMap] = useState<string>('')
   const [map, setMap] = useState<WorldMap | null>(null)
   const [playerName, setPlayerName] = useState(() => localStorage.getItem('loomia:name') ?? 'Loomian')
   const [hat, setHat] = useState<string>('')
@@ -38,11 +45,10 @@ export default function App() {
   const [pants, setPants] = useState(PANTS_COLORS[0])
   const [launchState, setLaunchState] = useState<'idle' | 'launching' | 'launched' | 'error'>('idle')
   const [launchMessage, setLaunchMessage] = useState('')
-  const [launchStatus, setLaunchStatus] = useState<LaunchStatus | null>(null)
 
   const refreshStatus = useCallback(async () => {
     try {
-      const data = await api<ServerStatus>('/api/status')
+      const data = await api<Status>('/api/status')
       setStatus(data)
       setConnection('online')
     } catch {
@@ -50,91 +56,85 @@ export default function App() {
     }
   }, [])
 
-  useEffect(() => {
-    void refreshStatus()
-    const timer = setInterval(() => void refreshStatus(), 4000)
-    return () => clearInterval(timer)
-  }, [refreshStatus])
-
-  useEffect(() => {
-    api<WorldInfo[]>('/api/worlds')
-      .then(async (list) => {
-        setWorlds(list)
-        if (list[0]) {
-          const fullMap = await api<WorldMap>(`/api/worlds/${list[0].id}`)
-          setMap(fullMap)
-        }
-      })
-      .catch(() => {
-        // O servidor pode não estar no ar ainda: a prévia mostra "carregando".
-      })
+  const refreshMaps = useCallback(async () => {
+    try {
+      setMaps(await api<MapInfo[]>('/api/maps'))
+    } catch {
+      // O master pode não estar no ar ainda.
+    }
   }, [])
 
-  // Polling do progresso de compilação enquanto o cliente é preparado.
   useEffect(() => {
-    if (launchState !== 'launching') return
+    void refreshStatus()
+    void refreshMaps()
+    const timer = setInterval(() => {
+      void refreshStatus()
+      void refreshMaps()
+    }, 4000)
+    return () => clearInterval(timer)
+  }, [refreshStatus, refreshMaps])
+
+  // Mapa selecionado: alimenta a prévia 3D e o botão Jogar.
+  const activeMapId = selectedMap || maps[0]?.id || ''
+  useEffect(() => {
+    if (!activeMapId) return
     let cancelled = false
-    const poll = async () => {
-      try {
-        const progress = await api<LaunchStatus>('/api/launch/status')
-        if (!cancelled) setLaunchStatus(progress)
-      } catch {
-        /* ignora */
-      }
-    }
-    void poll()
-    const timer = setInterval(() => void poll(), 1500)
+    api<WorldMap>(`/api/maps/${activeMapId}`)
+      .then((world) => {
+        if (!cancelled) setMap(world)
+      })
+      .catch(() => {
+        if (!cancelled) setMap(null)
+      })
     return () => {
       cancelled = true
-      clearInterval(timer)
     }
-  }, [launchState])
+  }, [activeMapId])
 
+  /**
+   * Botão "Jogar": o master aloca a sala (processo Go, UDP) e devolve o link
+   * `loomia://launch?...`. O navegador abre esse link, o sistema operacional
+   * entrega ao handler, e o cliente LOVR inicia já conectado à sala.
+   */
   const launch = async () => {
     const name = playerName.trim().slice(0, 20) || 'Loomian'
     setPlayerName(name)
     localStorage.setItem('loomia:name', name)
+
+    if (!activeMapId) {
+      setLaunchState('error')
+      setLaunchMessage('nenhum mapa disponível no catálogo ainda')
+      return
+    }
+
     setLaunchState('launching')
-    setLaunchMessage('Preparando o cliente Loomia…')
+    setLaunchMessage('Alocando uma sala para o mapa…')
 
     try {
-      // Guarda a aparência no servidor (registro de jogadores persistido).
-      await api('/api/player', {
+      const result = await api<LaunchResponse>('/api/launch', {
         method: 'POST',
-        body: JSON.stringify({
-          username: name,
-          body_color: hexToRgb(body),
-          shirt_color: hexToRgb(shirt),
-          pants_color: hexToRgb(pants),
-          hat: hat || null,
-        }),
-      }).catch(() => undefined)
-
-      const result = await api<{ ok?: boolean; pid?: number; message?: string; error?: string }>('/api/launch', {
-        method: 'POST',
-        body: JSON.stringify({ playerName: name, world: worlds[0]?.id }),
+        body: JSON.stringify({ map_id: activeMapId, name, color: body.replace('#', '') }),
       })
-
       setLaunchState('launched')
-      setLaunchMessage(result.message ?? 'Cliente iniciado!')
+      setLaunchMessage(`${result.message}. Abrindo o cliente Loomia…`)
+      window.location.href = result.launch_url
     } catch (error) {
       setLaunchState('error')
       setLaunchMessage(
         error instanceof Error
-          ? `${error.message} — se o servidor estiver rodando, inicie o cliente manualmente com "cargo run -p loomia-client".`
-          : 'Falha ao iniciar o cliente.',
+          ? `${error.message} — o master server está rodando em loomia-masterserver (npm start)?`
+          : 'Falha ao alocar a sala.',
       )
     }
   }
-
-  const players = status?.players ?? []
-  const humanPlayers = players.filter((p) => !p.name.startsWith('Loomian'))
-  const displayedPlayers = humanPlayers.length > 0 ? humanPlayers : players
 
   const avatarColors = useMemo(
     () => ({ body: hexToRgb(body), shirt: hexToRgb(shirt), pants: hexToRgb(pants) }),
     [body, shirt, pants],
   )
+
+  const onlinePlayers = status?.players_online ?? 0
+  const openRooms = status?.rooms ?? []
 
   return (
     <div className="loomia">
@@ -145,8 +145,8 @@ export default function App() {
         </div>
         <nav className="topnav">
           <a href="#play">Jogar</a>
-          <a href="#world">Mundo</a>
-          <a href="#players">Jogadores</a>
+          <a href="#maps">Mapas</a>
+          <a href="#rooms">Salas</a>
           <a href="#about">Sobre</a>
         </nav>
         <div className={`status-pill ${connection}`}>
@@ -163,15 +163,16 @@ export default function App() {
       <main>
         <section className="hero" id="play">
           <div className="hero-copy">
-            <p className="eyebrow">cliente nativo em rust + bevy · servidor autoritativo em rust</p>
+            <p className="eyebrow">site em node.js · cliente nativo em lovr (lua) · salas em go</p>
             <h1>
               Entre no mundo.
               <br />
               Construa como em 2008.
             </h1>
             <p className="lead">
-              Loomia é um jogo online de mundos em blocos. O site é o lobby; o jogo é um cliente 3D em Rust que
-              abre em uma janela própria — com física, chat e multiplayer em tempo real.
+              Loomia é um jogo online de mundos em blocos. O site é o lobby; ao clicar em
+              “Jogar” o master server sobe uma sala autoritativa em Go e abre o cliente LOVR
+              no seu computador pelo link <code>loomia://</code>.
             </p>
 
             <div className="launch-card">
@@ -183,6 +184,19 @@ export default function App() {
                   onChange={(event) => setPlayerName(event.target.value)}
                   placeholder="Loomian"
                 />
+              </label>
+
+              <label className="field compact">
+                <span>Mapa</span>
+                <select value={activeMapId} onChange={(event) => setSelectedMap(event.target.value)}>
+                  {maps.length === 0 && <option value="">Nenhum mapa publicado</option>}
+                  {maps.map((entry) => (
+                    <option key={entry.id} value={entry.id}>
+                      {entry.name}
+                      {entry.room_open ? ` · ${entry.online ?? 0} online` : ''}
+                    </option>
+                  ))}
+                </select>
               </label>
 
               <div className="avatar-editor">
@@ -231,34 +245,25 @@ export default function App() {
               <button
                 className="launch-button"
                 onClick={() => void launch()}
-                disabled={!status || launchState === 'launching'}
+                disabled={!status || maps.length === 0 || launchState === 'launching'}
               >
                 <span className="play-icon">▶</span>
-                {launchState === 'launching' ? 'LANÇANDO…' : 'LANÇAR LOOMIA'}
+                {launchState === 'launching' ? 'ALOCANDO SALA…' : 'JOGAR NO MAPA'}
               </button>
 
               <div className={`launch-feedback ${launchState}`}>
-                {launchState === 'idle' && 'O cliente abre em uma nova janela (Carregando Loomia, Aguarde!).'}
-                {launchState === 'launching' && (
-                  <>
-                    <span>{launchMessage}</span>
-                    {launchStatus?.building ? (
-                      <code className="compile-line">{launchStatus.last_line}</code>
-                    ) : (
-                      !launchStatus?.built && (
-                        <code className="compile-line">
-                          compilando o cliente pela primeira vez (pode levar alguns minutos)…
-                        </code>
-                      )
-                    )}
-                  </>
-                )}
+                {launchState === 'idle' &&
+                  'O cliente abre em uma janela própria pelo link loomia:// (o cliente LOVR precisa estar instalado).'}
+                {launchState === 'launching' && <span>{launchMessage}</span>}
                 {launchState === 'launched' && `✔ ${launchMessage}`}
                 {launchState === 'error' && `✖ ${launchMessage}`}
                 {status && (
                   <small>
-                    WebSocket: <code>{status.ws_url}</code> · cliente{' '}
-                    {status.client.built ? 'compilado' : 'ainda não compilado'}
+                    handler <code>{status.protocol.scheme}</code>{' '}
+                    {status.protocol.registered ? 'registrado no sistema' : 'ainda não registrado'} ·{' '}
+                    <a href="/api/launch/info" target="_blank" rel="noreferrer">
+                      detalhes
+                    </a>
                   </small>
                 )}
               </div>
@@ -268,36 +273,46 @@ export default function App() {
           <div className="hero-visual">
             <WorldPreview map={map} />
             <div className="hero-visual-caption">
-              <strong>{map?.name ?? 'Baseplate Clássica'}</strong>
-              <span>{worlds[0]?.description ?? 'Prévia do mundo servido pelo servidor.'}</span>
+              <strong>{map?.name ?? 'Selecione um mapa'}</strong>
+              <span>
+                {maps.find((entry) => entry.id === map?.id)?.description ||
+                  'Prévia do mapa servido pelo catálogo da comunidade.'}
+              </span>
             </div>
           </div>
         </section>
 
-        <section className="cards" id="world">
+        <section className="cards" id="maps">
           <article className="card">
-            <h2>Mundo</h2>
-            <p>{status ? `${status.map.blocks} blocos em "${status.map.name}"` : 'Aguardando o servidor…'}</p>
-            <ul>
-              <li>
-                Mapa de teste gerado no servidor e salvo em <code>data/worlds/baseplate.loom</code>
-              </li>
-              <li>Blocos com cor e material (grama, tijolo, madeira, pedra, neon)</li>
-              <li>Colisão autoritativa: o servidor valida cada passo</li>
+            <h2>Mapas da comunidade</h2>
+            <p>{maps.length} publicados</p>
+            <ul className="player-list">
+              {maps.length === 0 && <li className="muted">Nenhum mapa ainda — publique o primeiro!</li>}
+              {maps.map((entry) => (
+                <li key={entry.id}>
+                  <span className="player-dot" />
+                  <button type="button" className="link-button" onClick={() => setSelectedMap(entry.id)}>
+                    {entry.name}
+                  </button>
+                  <small>
+                    {entry.author} · {entry.online ? `${entry.online} online` : 'sala fechada'}
+                  </small>
+                </li>
+              ))}
             </ul>
           </article>
 
-          <article className="card" id="players">
-            <h2>Jogadores</h2>
-            <p>{status ? `${status.players_online} online agora` : '…'}</p>
+          <article className="card" id="rooms">
+            <h2>Salas ativas</h2>
+            <p>{onlinePlayers} jogadores online</p>
             <ul className="player-list">
-              {displayedPlayers.length === 0 && <li className="muted">Ninguém no mundo ainda — lance o jogo!</li>}
-              {displayedPlayers.map((player) => (
-                <li key={player.id}>
+              {openRooms.length === 0 && <li className="muted">Nenhuma sala aberta — clique em Jogar!</li>}
+              {openRooms.map((room) => (
+                <li key={room.map_id}>
                   <span className="player-dot" />
-                  {player.name}
+                  {room.map_name}
                   <small>
-                    {player.position[0].toFixed(1)}, {player.position[1].toFixed(1)}, {player.position[2].toFixed(1)}
+                    {room.address} · {room.players}/{room.capacity}
                   </small>
                 </li>
               ))}
@@ -308,18 +323,24 @@ export default function App() {
             <h2>Arquitetura</h2>
             <ul>
               <li>
-                <strong>loomia-shared</strong> — protocolo, física e mundo (cliente e servidor usam o mesmo crate)
+                <strong>loomia-masterserver</strong> — Node.js: contas, catálogo, alocação de
+                salas e API HTTP
               </li>
               <li>
-                <strong>loomia-server</strong> — Axum + Tokio, 30 Hz autoritativos, WebSocket em <code>/ws</code>
+                <strong>loomia-gameserver</strong> — Go: física autoritativa a 30 Hz e
+                snapshots por UDP
               </li>
               <li>
-                <strong>loomia-client</strong> — Bevy 3D, previsão local + reconciliação
+                <strong>loomia-client-lovr</strong> — cliente 3D em Lua/LOVR, aberto pelo link{' '}
+                <code>loomia://</code>
+              </li>
+              <li>
+                <strong>loomia-frontend</strong> — este site (React + Vite)
               </li>
             </ul>
             <p className="muted">
-              Latência: {status ? `${status.sessions} sessões` : '—'} · chat: {status ? status.total_chat_messages : 0}{' '}
-              msgs
+              Sessões: {status?.sessions ?? 0} · tempo no ar:{' '}
+              {status ? `${Math.floor(status.uptime_secs / 60)} min` : '—'}
             </p>
           </article>
         </section>

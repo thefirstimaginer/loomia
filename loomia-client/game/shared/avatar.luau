@@ -62,7 +62,52 @@ function Avatar.new(appearance)
 	self.speed = 0
 	self.spin = 0
 	self:build()
+	self:buildNameTag()
 	return self
+end
+
+-- Nome do jogador flutuando acima da cabeça (Billboard + texto).
+-- O billboard é reposicionado junto com o avatar em `update`.
+function Avatar:buildNameTag()
+	local name = self.appearance.username or self.appearance.name or "Jogador"
+	if name == "" then
+	name = "Jogador"
+	end
+	local ok, billboard = pcall(function()
+	return import("Objects").Billboard()
+	end)
+	if not ok or not billboard then
+		return
+	end
+	local okFont, primitive = pcall(function()
+		local Asset = import("Asset")
+		return GUI.Basic.Font(Asset.GetAsset("Font", "fonts/DejaVuSans.ttf"))
+	end)
+	if not okFont or not primitive then
+		pcall(function()
+			billboard:Destroy()
+		end)
+		return
+	end
+
+	primitive.Text = name
+	primitive.TextSize = 20
+	primitive.Size = Dim(200, 26)
+	primitive.Position = Dim(0, 0)
+	pcall(function()
+		primitive.AnchorPoint = Dim(0.5, 0.5)
+	end)
+	pcall(function()
+		primitive.Color = Color3.new(1, 1, 1)
+	end)
+	billboard.Size = Dim(200, 26)
+	billboard.ScaleWithCamera = true
+	pcall(function()
+		billboard:AddChild(primitive)
+	end)
+
+	self.billboard = billboard
+	self.namePrimitive = primitive
 end
 
 --- Registra uma part com offset local `{ x, y, z }`.
@@ -143,15 +188,20 @@ function Avatar:buildHat(hat)
 	end
 end
 
---- Atualiza posição (interpolada), yaw e animação de andar.
---- `target` = { position = { x, y, z }, yaw = número } (estado autoritativo/previsão).
-function Avatar:update(dt, target, speed)
+-- Atualiza posição (interpolada), yaw e animação de andar.
+-- `target` = { position = { x, y, z }, yaw = número } (estado autoritativo/previsão).
+-- `opts` pode trazer:
+--   `snap = true`  -> cola na posição (dono local, sem lag de interpolação)
+--   `animDt`       -> dt usado SÓ pela animação (separado do snap)
+function Avatar:update(dt, target, speed, opts)
 	dt = math.max(0, dt)
+	opts = opts or {}
+	local animDt = (opts.animDt ~= nil) and opts.animDt or dt
 
 	local tx, ty, tz = target.position[1], target.position[2], target.position[3]
 	local dx, dz = tx - self.position[1], tz - self.position[3]
 	local far = math.sqrt(dx * dx + dz * dz) > 10 or math.abs(ty - self.position[2]) > 6
-	local k = far and 1 or math.min(1, dt * 20)
+	local k = (opts.snap or far) and 1 or math.min(1, dt * 20)
 	self.position[1] = self.position[1] + dx * k
 	self.position[2] = self.position[2] + (ty - self.position[2]) * k
 	self.position[3] = self.position[3] + dz * k
@@ -164,15 +214,28 @@ function Avatar:update(dt, target, speed)
 	while delta < -math.pi do
 		delta += math.pi * 2
 	end
-	self.yaw = (self.yaw or targetYaw) + delta * math.min(1, dt * 14)
+	self.yaw = (self.yaw or targetYaw) + delta * math.min(1, dt * 8)
 
 	self.speed = speed or self.speed or 0
 	if self.speed > 0.5 then
-		self.clock = self.clock + dt * (4.0 + self.speed * 0.55)
+		-- Ritmo de passada: ~1,4 ciclos/s andando na velocidade normal
+		-- (12,5 u/s) — uma perna para frente e para tras a cada 0,7 s.
+		self.clock = self.clock + animDt * (3.0 + self.speed * 0.35)
 	end
-	local swing = self.speed > 0.5 and math.sin(self.clock) * 0.65 or 0
+	local swing = self.speed > 0.5 and math.sin(self.clock) * 0.42 or 0
 
 	self.root = CFrame.new(Vector.new(self.position[1], self.position[2], self.position[3]), Vector.new(0, self.yaw, 0))
+
+	-- Nome acima da cabeça (altura 4.1 = topo do avatar + folga).
+	if self.billboard then
+		pcall(function()
+			self.billboard.Position = Vector.new(
+				self.position[1],
+				self.position[2] + 4.15,
+				self.position[3]
+			)
+		end)
+	end
 
 	-- Parts estáticas (torso, cabeça, olhos, chapéu...).
 	for _, entry in ipairs(self.parts) do
@@ -198,7 +261,7 @@ function Avatar:update(dt, target, speed)
 
 	-- Hélice do chapéu: gira no eixo Y em torno do próprio centro.
 	if self.propeller then
-		self.spin = self.spin + dt * 6.0
+		self.spin = self.spin + animDt * 6.0
 		local hub = self.root * CFrame.new(Vector.new(0, self.propeller.y, 0), Vector.new(0, self.spin, 0))
 		for _, blade in ipairs(self.propellerParts) do
 			blade.CFrame = hub
@@ -207,6 +270,12 @@ function Avatar:update(dt, target, speed)
 end
 
 function Avatar:Destroy()
+	if self.billboard then
+		pcall(function()
+			self.billboard:Destroy()
+		end)
+		self.billboard = nil
+	end
 	for _, entry in ipairs(self.parts) do
 		pcall(function()
 			entry.part:Destroy()

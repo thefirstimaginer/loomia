@@ -2,6 +2,25 @@
   {
     "username": "Loomian",
     "body_color": [
+      224,
+      175,
+      140
+    ],
+    "shirt_color": [
+      15,
+      120,
+      190
+    ],
+    "pants_color": [
+      60,
+      60,
+      120
+    ],
+    "hat": null
+  },
+  {
+    "username": "Loomian1212",
+    "body_color": [
       234,
       190,
       25
@@ -17,5 +36,24 @@
       45
     ],
     "hat": null
+  },
+  {
+    "username": "PixelMaster1212",
+    "body_color": [
+      234,
+      190,
+      25
+    ],
+    "shirt_color": [
+      15,
+      120,
+      190
+    ],
+    "pants_color": [
+      35,
+      75,
+      45
+    ],
+    "hat": "cap"
   }
 ]
