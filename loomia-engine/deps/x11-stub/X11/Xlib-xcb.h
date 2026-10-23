@@ -11,4 +11,8 @@
 
 typedef struct xcb_connection_t xcb_connection_t;
 
+/* Protótipo real do libX11-xcb (existe como .so.1 no sistema, sem o pacote
+ * -dev). Sem ele o compilador trata a chamada como implícita. */
+extern xcb_connection_t* XGetXCBConnection(Display* dpy);
+
 #endif

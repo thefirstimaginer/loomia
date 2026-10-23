@@ -82,21 +82,33 @@ cc -O2 -Wall -Wextra -o "$APPDIR/usr/bin/loomia-tray" "$APPIMAGE_SRC/tray/loomia
 
 # --- 4. Engine ------------------------------------------------------------
 if [ -z "$ENGINE_SOURCE" ] && [ "$WITH_ENGINE" = "1" ]; then
+  # Os headers do Vulkan são vendorizados em deps/vulkan-headers; a lib é
+  # carregada em runtime, então não é preciso `libvulkan-dev` para compilar.
   log "compilando o LoomiaEngine"
   cmake -S "$ENGINE_DIR" -B "$ENGINE_DIR/build" \
     -DCMAKE_BUILD_TYPE=Release \
-    -DLOVR_USE_VULKAN=OFF \
+    -DLOVR_USE_VULKAN=ON \
     -DLOVR_USE_STEAM_AUDIO=OFF \
     -DLOVR_ENABLE_HEADSET=OFF \
     -DLOVR_ENABLE_PHYSICS=OFF >/dev/null
-  cmake --build "$ENGINE_DIR/build" -j"$(nproc)" >/dev/null
-  ENGINE_SOURCE="$(find "$ENGINE_DIR/build" -maxdepth 2 -type f -name 'loomiaengine*' | head -1)"
+  # Sem redirecionar o build: um erro de compilação precisa abortar aqui
+  # (set -e), não virar um AppImage sem engine.
+  cmake --build "$ENGINE_DIR/build" -j"$(nproc)"
+  # O executável do CMake chama-se `lovr` (target `lovr`); aceita também um
+  # eventual rename para `loomiaengine`.
+  ENGINE_SOURCE="$(find "$ENGINE_DIR/build" -maxdepth 2 -type f \
+    \( -name 'loomiaengine*' -o -name 'lovr' \) -perm -u+x | head -1)"
+  # As libs ao lado do binário (libglfw, libluajit, libmsdfgen) são carregadas
+  # via RUNPATH `$ORIGIN` e precisam ir para o mesmo diretório.
+  [ -n "$ENGINE_SOURCE" ] && ENGINE_LIBDIR="$(dirname "$ENGINE_SOURCE")"
 fi
 
 if [ -n "$ENGINE_SOURCE" ] && [ -x "$ENGINE_SOURCE" ]; then
   log "engine: $ENGINE_SOURCE"
   cp "$ENGINE_SOURCE" "$APPDIR/usr/bin/loomiaengine"
   chmod +x "$APPDIR/usr/bin/loomiaengine"
+  find "$ENGINE_LIBDIR" -maxdepth 1 -type f -name '*.so*' \
+    -exec cp -P {} "$APPDIR/usr/bin/" \;
 else
   log "AVISO: engine não encontrado — o AppImage abre a janela, mas não inicia o jogo"
 fi

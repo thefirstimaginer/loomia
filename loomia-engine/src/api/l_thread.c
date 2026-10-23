@@ -233,7 +233,11 @@ static int l_lovrThreadCall(lua_State* L) {
 
     if (lua_isnil(L, -1)) {
       lua_pushvalue(L, 1);
+#if LUA_VERSION_NUM >= 503
       luax_check(L, !lua_dump(L, appendChunk, context, 0), "Failed to dump function to bytecode");
+#else
+      luax_check(L, !lua_dump(L, appendChunk, context), "Failed to dump function to bytecode");
+#endif
       lua_pushlstring(L, context->code.data, context->code.length);
       lua_rawset(L, -4);
       lua_pop(L, 2);

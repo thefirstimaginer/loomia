@@ -1,8 +1,3 @@
-
-/target
-/data
-Ruzit
-
 # Game server (Go): binário local e cache de build
 /loomia-gameserver/loomia-gameserver
 /loomia-gameserver/loomia-gameserver.exe

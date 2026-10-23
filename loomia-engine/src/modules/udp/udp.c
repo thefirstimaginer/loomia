@@ -37,6 +37,7 @@
 
 #include "lua.h"
 #include "lauxlib.h"
+#include "api/api.h"
 #include "util.h"
 
 #define UDP_MAX_DATAGRAM 65535

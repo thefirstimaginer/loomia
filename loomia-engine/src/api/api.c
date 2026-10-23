@@ -33,6 +33,7 @@ LOVR_EXPORT int luaopen_lovr_system(lua_State* L);
 LOVR_EXPORT int luaopen_lovr_task(lua_State* L);
 LOVR_EXPORT int luaopen_lovr_thread(lua_State* L);
 LOVR_EXPORT int luaopen_lovr_timer(lua_State* L);
+LOVR_EXPORT int luaopen_udp(lua_State* L);
 
 static int luax_tostring(lua_State* L) {
   Object* object = lua_touserdata(L, 1);
@@ -97,6 +98,9 @@ void luax_preload(lua_State* L) {
 #endif
 #ifndef LOVR_DISABLE_UTF8
     { "utf8", luaopen_utf8 },
+#endif
+#ifndef LOVR_DISABLE_UDP
+    { "udp", luaopen_udp },
 #endif
     { NULL, NULL }
   };
