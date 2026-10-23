@@ -66,6 +66,12 @@ assim ninguém muda um dialeto sem o outro perceber.
 4. `p`/`v` são `[x, y, z]` em unidades do mundo; `y` é a base do personagem
    (entre os pés), com a cabeça em `y + 3.0`.
 
+## Quem registra o `loomia://`
+
+Só o **cliente** (AppImage), no primeiro clique, uma única vez — ver
+`loomia-client-lovr/README.md`. O master gera o link e consulta o registro
+apenas em `GET /api/launch/info`.
+
 ## Mesma física nos dois lados
 
 `loomia-gameserver/physics.go` e `loomia-client-lovr/src/physics.lua` são

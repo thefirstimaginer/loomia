@@ -1,17 +1,16 @@
-// Handler `loomia://` para a máquina do jogador.
+// Protocolo `loomia://` — o elo entre o site e o cliente.
 //
-// O site gera um link `loomia://launch?server=host:port&token=...&map=...`; o
-// sistema operacional o entrega a este script, que traduz para argumentos do
-// LOVR:
+// O site gera `loomia://launch?server=host:port&token=...&map=...` e o sistema
+// operacional entrega esse link ao **cliente Loomia** (AppImage), que abre a
+// janela e inicia o jogo.
 //
-//   lovr <clientDir> server=host:port token=... map=... name=... color=...
-//
-// Gerado automaticamente pelo master server em `data/launcher/`.
+// REGRA IMPORTANTE: quem registra `loomia://` é o CLIENTE, uma única vez
+// (no primeiro clique). O master só *gera e inspeciona* links — ele roda na
+// nuvem, onde não faz sentido mexer no desktop de ninguém.
 
 import fs from 'node:fs/promises'
 import fsSync from 'node:fs'
 import path from 'node:path'
-import os from 'node:os'
 import { spawnSync } from 'node:child_process'
 
 /** Interpreta o link customizado (aceita `loomia://launch` e `loomia:launch`). */
@@ -31,99 +30,58 @@ export function parseLaunchUrl(url) {
   }
 }
 
-/**
- * Script POSIX intermediário (shell puro, sem dependências): recebe a URL,
- * extrai os campos e abre o LOVR com o projeto do cliente.
- */
-export function handlerScript({ lovrBin, clientDir }) {
-  const extra = (process.env.LOOMIA_LOVR_ARGS ?? '')
-    .split(/\s+/)
-    .filter(Boolean)
-    .map((arg) => ` ${arg}`)
-    .join('')
-  return `#!/bin/sh
-# Gerado pelo master server do Loomia — converte loomia:// em argumentos do LOVR.
-URL="$1"
-field() {
-  printf '%s' "$URL" | sed -n "s/.*[?&]$1=\\([^&]*\\).*/\\1/p"
+/** Vira os campos do link para a linha de comando do engine. */
+export function launchArguments(link) {
+  const parsed = parseLaunchUrl(link)
+  if (!parsed) return null
+  return [
+    `server=${parsed.server}`,
+    `token=${parsed.token}`,
+    `map=${parsed.map}`,
+    `name=${parsed.name}`,
+    `color=${parsed.color}`,
+    `origin=${parsed.origin}`,
+  ]
 }
-SERVER=$(field server)
-TOKEN=$(field token)
-MAP=$(field map)
-NAME=$(field name)
-COLOR=$(field color)
-ORIGIN=$(field origin)
 
-if [ -z "$SERVER" ] || [ -z "$TOKEN" ]; then
-  echo "loomia: link inválido: $URL" >&2
+/** Script de exemplo para o site oferecer (quem não usa o AppImage). */
+export function handlerScript({ clientBin = 'loomia-client' } = {}) {
+  return `#!/bin/sh
+# Loomia — abre o cliente a partir de um link loomia://
+#
+# Instalação manual (quem não usa o AppImage):
+#   cp loomia-launch.sh ~/.local/bin/loomia-launch
+#   xdg-mime default loomia-cliente.desktop x-scheme-handler/loomia
+URL="$1"
+if [ -z "$URL" ]; then
+  echo "uso: loomia-launch loomia://launch?server=host:porta&token=..." >&2
   exit 2
 fi
-
-exec "${lovrBin}"${extra} "${clientDir}" \\
-  server="$SERVER" token="$TOKEN" map="$MAP" name="$NAME" color="$COLOR" origin="$ORIGIN"
+exec "${clientBin}" "$URL"
 `
 }
 
-async function registerLinux(handlerPath) {
-  const apps = path.join(os.homedir(), '.local', 'share', 'applications')
-  await fs.mkdir(apps, { recursive: true })
-  const desktopFile = path.join(apps, 'loomia-launcher.desktop')
-  await fs.writeFile(
-    desktopFile,
-    `[Desktop Entry]
-Type=Application
-Name=Loomia
-Comment=Abrir o cliente Loomia (LOVR)
-Exec=${handlerPath} %u
-Terminal=false
-Categories=Game;
-MimeType=x-scheme-handler/loomia;
-`,
-  )
-  spawnSync('xdg-mime', ['default', 'loomia-launcher.desktop', 'x-scheme-handler/loomia'])
-  spawnSync('update-desktop-database', [apps])
-  return desktopFile
-}
-
-function registerWindows(handlerPath) {
-  const command = `"${process.execPath}" "${handlerPath}" "%1"`
-  spawnSync('reg', ['add', 'HKCU\\Software\\Classes\\loomia', '/ve', '/d', 'URL:Loomia Protocol', '/f'])
-  spawnSync('reg', ['add', 'HKCU\\Software\\Classes\\loomia', '/v', 'URL Protocol', '/d', '', '/f'])
-  spawnSync('reg', ['add', 'HKCU\\Software\\Classes\\loomia\\shell\\open\\command', '/ve', '/d', command, '/f'])
-  return 'HKCU\\Software\\Classes\\loomia'
-}
-
 /**
- * Garante o script no disco e, quando `mode = 'auto'`, registra no SO (o
- * master roda na máquina do jogador em dev; em produção use 'none').
+ * Inspeção do registro do protocolo na máquina (diagnóstico do site).
+ * Nunca registra nada: devolve o handler atual e se ele parece válido.
  */
-export async function installProtocolHandler({ config, log }) {
-  const dir = path.join(config.dataDir, 'launcher')
-  await fs.mkdir(dir, { recursive: true })
-  const handlerPath = path.join(dir, process.platform === 'win32' ? 'loomia-launch.cmd' : 'loomia-launch.sh')
-  await fs.writeFile(handlerPath, handlerScript(config), { mode: 0o755 })
-
-  if (config.protocolHandler === 'none') {
-    log.info(`handler loomia:// gerado em ${handlerPath} (registro no SO desativado)`)
-    return { handlerPath, registered: false }
+export function inspectProtocolHandler() {
+  if (process.platform === 'linux') {
+    const result = spawnSync('xdg-mime', ['query', 'default', 'x-scheme-handler/loomia'], {
+      encoding: 'utf-8',
+    })
+    const desktopFile = (result.stdout ?? '').trim()
+    return { registered: Boolean(desktopFile), handler: desktopFile || null }
   }
-
-  try {
-    if (process.platform === 'linux') {
-      const desktopFile = await registerLinux(handlerPath)
-      log.info(`loomia:// registrado no SO (${desktopFile})`)
-      return { handlerPath, registered: true }
-    }
-    if (process.platform === 'win32') {
-      const key = registerWindows(handlerPath)
-      log.info(`loomia:// registrado no Windows (${key})`)
-      return { handlerPath, registered: true }
-    }
-    log.warn('macOS: para registrar loomia:// crie um .app com CFBundleURLTypes (ver README)')
-  } catch (error) {
-    log.warn(`não foi possível registrar loomia://: ${error.message}`)
+  if (process.platform === 'win32') {
+    const result = spawnSync(
+      'reg',
+      ['query', 'HKCU\\Software\\Classes\\loomia\\shell\\open\\command'],
+      { encoding: 'utf-8' },
+    )
+    return { registered: result.status === 0, handler: (result.stdout ?? '').trim() || null }
   }
-  return { handlerPath, registered: false }
+  return { registered: false, handler: null }
 }
 
 /** Cópia do script para o visitante baixar (instalação manual do cliente). */
@@ -133,4 +91,10 @@ export function writePortableHandler(config) {
   const file = path.join(dir, 'loomia-launch.sh')
   fsSync.writeFileSync(file, handlerScript(config), { mode: 0o755 })
   return file
+}
+
+export async function ensureLauncherDir(config) {
+  const dir = path.join(config.dataDir, 'launcher')
+  await fs.mkdir(dir, { recursive: true })
+  return dir
 }

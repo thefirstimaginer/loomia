@@ -1,7 +1,6 @@
 
 /target
 /data
-/lovr-0.19.0
 Ruzit
 
 # Game server (Go): binário local e cache de build
@@ -10,6 +9,8 @@ Ruzit
 
 # Site
 /loomia-frontend/dist
+/dist
+/build
 /loomia-frontend/node_modules
 
 # Master server: banco/dados locais e handler gerado

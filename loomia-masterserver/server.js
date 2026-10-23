@@ -18,7 +18,7 @@ import crypto from 'node:crypto'
 import { config } from './lib/config.js'
 import { Store } from './lib/store.js'
 import { RoomManager, launchUrl } from './lib/rooms.js'
-import { installProtocolHandler } from './lib/protocol.js'
+import { inspectProtocolHandler, writePortableHandler } from './lib/protocol.js'
 import { seedWorlds } from './lib/seed.js'
 import { sendJson, sendError, readBody, randomToken } from './lib/util.js'
 
@@ -45,7 +45,15 @@ const log = {
 const store = await new Store(config.dataDir).load()
 await seedWorlds(store, log)
 const rooms = new RoomManager({ config, store, log })
-const launch = await installProtocolHandler({ config, log })
+// O protocolo loomia:// é registrado pelo CLIENTE (AppImage), uma única vez.
+// O master só sabe gerar links e inspecionar o registro para o diagnóstico.
+const launch = inspectProtocolHandler()
+writePortableHandler(config)
+log.info(
+  launch.registered
+    ? `loomia:// registrado (${launch.handler})`
+    : 'loomia:// ainda não registrado — instale o cliente Loomia',
+)
 
 /** token do site -> { userId, name, expiresAt } */
 const sessions = new Map()
@@ -140,11 +148,7 @@ function handleStatus(req, res) {
       address: `${room.host}:${room.port}`,
       started_at: room.started_at,
     })),
-    protocol: {
-      scheme: 'loomia://',
-      handler: launch.handlerPath,
-      registered: launch.registered,
-    },
+    protocol: { scheme: 'loomia://', ...launch },
     stats,
   })
 }
@@ -357,10 +361,8 @@ function handleLaunchInfo(req, res, _arg, match) {
   void match
   sendJson(res, 200, {
     scheme: 'loomia://',
-    handler: launch.handlerPath,
-    registered: launch.registered,
-    lovr: config.lovrBin,
-    client_dir: config.clientDir,
+    ...inspectProtocolHandler(),
+    client: config.clientBin ?? 'loomia-client',
     platform: process.platform,
   })
 }

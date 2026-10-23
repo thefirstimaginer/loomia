@@ -51,14 +51,11 @@ function game:start(transfer)
 
   self.localId = welcome.id
   self.spawn = welcome.spawn or self.world.spawn
-  local you = welcome.you or {}
-  self.state = physics.newState(you.p or self.spawn)
+  -- O protocolo NÃO manda `you` no welcome: o servidor coloca o jogador no
+  -- spawn e corrige no primeiro snapshot (`players[].p` do próprio id).
+  self.state = physics.newState(self.spawn)
   self.state.yaw = self.camera.yaw
-  self.authoritative = {
-    p = you.p or self.spawn,
-    v = you.v or { 0, 0, 0 },
-    ground = you.ground or false,
-  }
+  self.authoritative = { p = self.spawn, v = { 0, 0, 0 }, ground = false }
 
   self.me = avatar.new({
     username = self.args.name,
@@ -152,7 +149,22 @@ function game:onRespawn(message)
 end
 
 function game:onSnapshot(message)
-  local ack = message.ack or 0
+  -- O ack é `players[].ack` do PRÓPRIO jogador (o snapshot lista todos,
+  -- inclusive quem recebeu).
+  local localEntry = nil
+  for _, player in ipairs(message.players or {}) do
+    if player.id == self.localId then localEntry = player end
+  end
+  local ack = localEntry and (localEntry.ack or 0) or 0
+
+  -- Base da reconciliação: posição autoritativa do próprio jogador.
+  if localEntry and localEntry.p then
+    self.authoritative = {
+      p = { localEntry.p[1], localEntry.p[2], localEntry.p[3] },
+      v = localEntry.v or { 0, 0, 0 },
+      ground = localEntry.ground or false,
+    }
+  end
 
   -- Remove os inputs que o servidor já aplicou.
   local remaining = {}
@@ -160,8 +172,10 @@ function game:onSnapshot(message)
     if entry.seq > ack then remaining[#remaining + 1] = entry end
   end
   self.pending = remaining
+  self.lastAck = ack
 
   for _, player in ipairs(message.players or {}) do
+    if player.id ~= self.localId then
     local previous = self.previous[player.id]
     local estimated = 0
     if previous then
@@ -189,6 +203,7 @@ function game:onSnapshot(message)
         yaw = player.yaw or 0,
         velocity = player.v or { 0, 0, 0 },
       }
+    end
     end
   end
 end

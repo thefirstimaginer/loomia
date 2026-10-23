@@ -1,63 +1,77 @@
-# Cliente LOVR do Loomia (Lua)
+# Cliente Loomia (Lua + AppImage)
 
-Cliente 3D do jogo: renderiza o mundo retrô de blocos, captura teclado/mouse,
-roda a **previsão local** da física e conversa com o **game server (Go)** por
-UDP.
-
-## Como o jogo abre
-
-O site gera um link customizado e o sistema operacional entrega ao cliente:
+O jogador abre o **AppImage**, vê a janela **“Cliente Loomia Pronto, vá para o
+site e se divirta!”**, escolhe o mapa no site e o jogo entra na sala. A janela
+pode ser minimizada: o cliente fica na **bandeja do sistema** até ser fechado
+pelo menu do ícone ou pelo botão **Fechar Cliente**.
 
 ```text
-loomia://launch?server=127.0.0.1:7801&token=abc&map=baseplate&name=Ana&color=eabe19
+site ──(link loomia://launch?server=…&token=…)──▶ AppImage (controlador Python)
+                                                    │ registra loomia:// UMA vez
+                                                    │ janela + bandeja (C/X11)
+                                                    ▼
+                                      LoomiaEngine (Lua) ──udp──▶ Sala (Go)
 ```
 
-O handler (`data/launcher/loomia-launch.sh`, criado pelo master) converte isso
-em argumentos do LOVR:
+## Componentes
+
+| Arquivo                        | O que faz                                                      |
+|--------------------------------|----------------------------------------------------------------|
+| `appimage/loomia-client.py`    | controlador: janela, bandeja, registro do protocolo, link, jogo |
+| `appimage/AppRun`              | entrada do AppImage                                            |
+| `appimage/tray/loomia-tray.c`  | ícone da bandeja em C/X11 (sem GTK/DBus)                       |
+| `appimage/build.sh`            | monta `dist/Loomia-x86_64.AppImage`                            |
+| `main.lua`, `src/`             | o jogo em Lua (roda no LoomiaEngine)                           |
+| `src/net.lua`                  | rede pelo módulo nativo `udp` do engine                        |
+
+## Registro do `loomia://` (uma única vez)
+
+No **primeiro clique** o controlador cria:
+
+* `~/.local/bin/loomia-client` — lançador que chama o AppImage atual;
+* `~/.local/share/applications/loomia-client.desktop` — `Exec=…loomia-client %u`,
+  `MimeType=x-scheme-handler/loomia`;
+* o marcador `~/.local/state/loomia/protocol-registered`.
+
+Depois disso nunca mais mexe no registro (`--register-only --force` refaz de
+propósito). Se o AppImage for movido, só o lançador é regravado no próximo
+clique — o link do site continua funcionando.
+
+> O **master server não registra nada**: ele gera o link e consulta o registro
+> apenas para diagnóstico (`GET /api/launch/info`).
+
+## Janela e bandeja
+
+* **Minimizar**: a janela some e o cliente continua rodando.
+* **Fechar a janela** (`X`): também minimiza — nada é perdido.
+* **Ícone → Fechar cliente** ou **Fechar Cliente** na janela: encerra jogo e
+  cliente.
+* Um segundo clique no AppImage (ou um novo link do site) traz a **mesma**
+  instância para frente.
+
+## Construir
 
 ```bash
-lovr loomia-client-lovr server=127.0.0.1:7801 token=abc map=baseplate name=Ana color=eabe19
+loomia-client-lovr/appimage/build.sh              # engine + cliente
+loomia-client-lovr/appimage/build.sh --no-engine  # só o controlador (teste)
 ```
 
-Sem link, o cliente abre o **menu** e permite digitar `host:porta` e o token.
+Saída: `dist/Loomia-x86_64.AppImage`.
 
-## Rodar
+## Rede
+
+* O jogo **não abre porta própria**: o controlador mantém uma ponte UDP local
+  em `127.0.0.1:7788` e o engine fala com ela (`LOOMIA_BRIDGE_PORT`).
+* O protocolo completo (mensagens, `ack`, física) está em
+  [`docs/protocolo.md`](../docs/protocolo.md) e é validado por
+  `loomia-gameserver/protocol_golden.json` com testes dos dois lados.
+
+## Testes
 
 ```bash
-lovr loomia-client-lovr                      # menu
-lovr loomia-client-lovr server=127.0.0.1:7801 token=SEU_TOKEN name=Ana
+lua loomia-client-lovr/tests/protocol_spec.lua   # protocolo × golden Go
+lua loomia-client-lovr/tests/physics_spec.lua    # física × golden Go
 ```
 
-Teclas:
-
-| Tecla / ação        | Função                                    |
-|---------------------|-------------------------------------------|
-| `W A S D` / setas   | andar                                     |
-| `Espaço`            | pular                                     |
-| botão direito       | arrastar para girar a câmera              |
-| roda do mouse       | zoom                                      |
-| `V`                 | primeira/terceira pessoa                  |
-| `T` / `Enter`       | chat (`Enter` envia, `Esc` cancela)       |
-| `R`                 | respawn                                   |
-| `F1`                | mostra o painel de diagnóstico            |
-
-## Estrutura
-
-```text
-main.lua            entrada do LOVR: headset, loop, troca de estados (loading → menu → game)
-conf.lua            configuração da janela
-src/args.lua        parsing dos argumentos `chave=valor` e do link loomia://
-src/net.lua         canal UDP: hello/input/snapshot/chat + medição de ping
-src/netbridge.lua   processo auxiliar UDP ↔ linhas JSON (LuaSocket)
-src/json.lua        JSON mínimo para quando o LOVR não tem decoder
-src/physics.lua     física da previsão local (espelha loomia-gameserver/physics.go)
-src/world.lua       baixa o mapa (.loom) do master e instancia os modelos
-src/avatar.lua      avatar 2008 em blocos + etiqueta de nome (MakeText)
-src/camera.lua      câmera orbital/primeira pessoa
-src/hud.lua         HUD, lista de jogadores, chat e diagnóstico
-src/states/         loading, menu, game
-```
-
-> **Física duplicada de propósito:** o cliente prevê com `src/physics.lua` e o
-> servidor decide com `loomia-gameserver/physics.go`. As constantes (raio,
-> velocidade, gravidade, degrau) precisam ser as mesmas nos dois arquivos.
+Teclas do jogo: `WASD`, `Espaço`, botão direito (câmera), roda (zoom), `V`
+(1ª/3ª pessoa), `T`/`Enter` (chat), `R` (respawn), `F1` (diagnóstico).

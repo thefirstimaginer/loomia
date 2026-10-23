@@ -42,10 +42,8 @@ export const config = {
   // Sala parada por tanto tempo sem jogadores é encerrada (ms).
   roomIdleMs: num(process.env.LOOMIA_ROOM_IDLE_MS, 2 * 60 * 1000),
 
-  // Handler `loomia://`. `auto` registra na máquina do próprio servidor (dev).
-  protocolHandler: process.env.LOOMIA_PROTOCOL_HANDLER ?? 'auto',
-  lovrBin: process.env.LOVR ?? '/usr/bin/lovr',
-  clientDir: path.resolve(root, '..', process.env.LOOMIA_LOVR_CLIENT_DIR ?? 'loomia-client-lovr'),
+  // Cliente que recebe o link loomia:// (o AppImage); só usado em scripts/docs.
+  clientBin: process.env.LOOMIA_CLIENT_BIN ?? 'loomia-client',
 
   // Token de entrada de uma sala expira depois disso (ms).
   launchTtlMs: num(process.env.LOOMIA_LAUNCH_TTL_MS, 30 * 1000),

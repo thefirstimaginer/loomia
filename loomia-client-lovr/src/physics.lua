@@ -16,6 +16,7 @@ physics.CHARACTER_RADIUS = 0.55
 physics.CHARACTER_HEIGHT = 3.0
 physics.STEP_HEIGHT = 0.6
 physics.SNAP_DISTANCE = 0.55
+physics.EYE_HEIGHT = 1.55
 
 local function clamp(value, lo, hi)
   if value < lo then return lo end

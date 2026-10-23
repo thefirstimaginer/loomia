@@ -1,0 +1,727 @@
+[
+  {
+    "name": "andar em +Z",
+    "blocks": [
+      {
+        "position": [
+          0,
+          -0.5,
+          0
+        ],
+        "size": [
+          40,
+          1,
+          40
+        ]
+      },
+      {
+        "position": [
+          4,
+          0.5,
+          0
+        ],
+        "size": [
+          2,
+          2,
+          6
+        ]
+      },
+      {
+        "position": [
+          -4,
+          0.25,
+          0
+        ],
+        "size": [
+          2,
+          1.5,
+          6
+        ]
+      },
+      {
+        "position": [
+          0,
+          0.25,
+          6
+        ],
+        "size": [
+          6,
+          1.5,
+          2
+        ]
+      },
+      {
+        "position": [
+          0,
+          5,
+          0
+        ],
+        "size": [
+          4,
+          0.5,
+          4
+        ]
+      },
+      {
+        "position": [
+          9,
+          3,
+          9
+        ],
+        "size": [
+          1,
+          1,
+          1
+        ],
+        "collidable": false
+      }
+    ],
+    "start": [
+      0,
+      0.2,
+      0
+    ],
+    "on_ground": true,
+    "inputs": [
+      {
+        "move_x": 0,
+        "move_z": 1,
+        "jump": false
+      }
+    ],
+    "steps": 60,
+    "expected": {
+      "position": [
+        0,
+        0,
+        4.166666666666666
+      ],
+      "on_ground": true
+    }
+  },
+  {
+    "name": "bater na parede",
+    "blocks": [
+      {
+        "position": [
+          0,
+          -0.5,
+          0
+        ],
+        "size": [
+          40,
+          1,
+          40
+        ]
+      },
+      {
+        "position": [
+          4,
+          0.5,
+          0
+        ],
+        "size": [
+          2,
+          2,
+          6
+        ]
+      },
+      {
+        "position": [
+          -4,
+          0.25,
+          0
+        ],
+        "size": [
+          2,
+          1.5,
+          6
+        ]
+      },
+      {
+        "position": [
+          0,
+          0.25,
+          6
+        ],
+        "size": [
+          6,
+          1.5,
+          2
+        ]
+      },
+      {
+        "position": [
+          0,
+          5,
+          0
+        ],
+        "size": [
+          4,
+          0.5,
+          4
+        ]
+      },
+      {
+        "position": [
+          9,
+          3,
+          9
+        ],
+        "size": [
+          1,
+          1,
+          1
+        ],
+        "collidable": false
+      }
+    ],
+    "start": [
+      0,
+      0.2,
+      0
+    ],
+    "on_ground": true,
+    "inputs": [
+      {
+        "move_x": 1,
+        "move_z": 0,
+        "jump": false
+      }
+    ],
+    "steps": 90,
+    "expected": {
+      "position": [
+        2.0833333333333335,
+        0,
+        0
+      ],
+      "on_ground": true
+    }
+  },
+  {
+    "name": "degrau alto bloqueia",
+    "blocks": [
+      {
+        "position": [
+          0,
+          -0.5,
+          0
+        ],
+        "size": [
+          40,
+          1,
+          40
+        ]
+      },
+      {
+        "position": [
+          4,
+          0.5,
+          0
+        ],
+        "size": [
+          2,
+          2,
+          6
+        ]
+      },
+      {
+        "position": [
+          -4,
+          0.25,
+          0
+        ],
+        "size": [
+          2,
+          1.5,
+          6
+        ]
+      },
+      {
+        "position": [
+          0,
+          0.25,
+          6
+        ],
+        "size": [
+          6,
+          1.5,
+          2
+        ]
+      },
+      {
+        "position": [
+          0,
+          5,
+          0
+        ],
+        "size": [
+          4,
+          0.5,
+          4
+        ]
+      },
+      {
+        "position": [
+          9,
+          3,
+          9
+        ],
+        "size": [
+          1,
+          1,
+          1
+        ],
+        "collidable": false
+      }
+    ],
+    "start": [
+      0,
+      0.2,
+      0
+    ],
+    "on_ground": true,
+    "inputs": [
+      {
+        "move_x": -1,
+        "move_z": 0,
+        "jump": false
+      }
+    ],
+    "steps": 90,
+    "expected": {
+      "position": [
+        -2.0833333333333335,
+        0,
+        0
+      ],
+      "on_ground": true
+    }
+  },
+  {
+    "name": "pular",
+    "blocks": [
+      {
+        "position": [
+          0,
+          -0.5,
+          0
+        ],
+        "size": [
+          40,
+          1,
+          40
+        ]
+      },
+      {
+        "position": [
+          4,
+          0.5,
+          0
+        ],
+        "size": [
+          2,
+          2,
+          6
+        ]
+      },
+      {
+        "position": [
+          -4,
+          0.25,
+          0
+        ],
+        "size": [
+          2,
+          1.5,
+          6
+        ]
+      },
+      {
+        "position": [
+          0,
+          0.25,
+          6
+        ],
+        "size": [
+          6,
+          1.5,
+          2
+        ]
+      },
+      {
+        "position": [
+          0,
+          5,
+          0
+        ],
+        "size": [
+          4,
+          0.5,
+          4
+        ]
+      },
+      {
+        "position": [
+          9,
+          3,
+          9
+        ],
+        "size": [
+          1,
+          1,
+          1
+        ],
+        "collidable": false
+      }
+    ],
+    "start": [
+      0,
+      0.2,
+      0
+    ],
+    "on_ground": true,
+    "inputs": [
+      {
+        "move_x": 0,
+        "move_z": 0,
+        "jump": true
+      },
+      {
+        "move_x": 0,
+        "move_z": 0,
+        "jump": false
+      },
+      {
+        "move_x": 0,
+        "move_z": 0,
+        "jump": false
+      }
+    ],
+    "steps": 40,
+    "expected": {
+      "position": [
+        0,
+        1.0166666666666666,
+        0
+      ],
+      "on_ground": false
+    }
+  },
+  {
+    "name": "andar e pular",
+    "blocks": [
+      {
+        "position": [
+          0,
+          -0.5,
+          0
+        ],
+        "size": [
+          40,
+          1,
+          40
+        ]
+      },
+      {
+        "position": [
+          4,
+          0.5,
+          0
+        ],
+        "size": [
+          2,
+          2,
+          6
+        ]
+      },
+      {
+        "position": [
+          -4,
+          0.25,
+          0
+        ],
+        "size": [
+          2,
+          1.5,
+          6
+        ]
+      },
+      {
+        "position": [
+          0,
+          0.25,
+          6
+        ],
+        "size": [
+          6,
+          1.5,
+          2
+        ]
+      },
+      {
+        "position": [
+          0,
+          5,
+          0
+        ],
+        "size": [
+          4,
+          0.5,
+          4
+        ]
+      },
+      {
+        "position": [
+          9,
+          3,
+          9
+        ],
+        "size": [
+          1,
+          1,
+          1
+        ],
+        "collidable": false
+      }
+    ],
+    "start": [
+      0,
+      0.2,
+      0
+    ],
+    "on_ground": true,
+    "inputs": [
+      {
+        "move_x": 0,
+        "move_z": 1,
+        "jump": false
+      },
+      {
+        "move_x": 0,
+        "move_z": 1,
+        "jump": true
+      },
+      {
+        "move_x": 0,
+        "move_z": 1,
+        "jump": false
+      },
+      {
+        "move_x": 0,
+        "move_z": 1,
+        "jump": false
+      }
+    ],
+    "steps": 80,
+    "expected": {
+      "position": [
+        0,
+        -49.88333333333333,
+        33.333333333333364
+      ],
+      "on_ground": false
+    }
+  },
+  {
+    "name": "cair e pousar",
+    "blocks": [
+      {
+        "position": [
+          0,
+          -0.5,
+          0
+        ],
+        "size": [
+          40,
+          1,
+          40
+        ]
+      },
+      {
+        "position": [
+          4,
+          0.5,
+          0
+        ],
+        "size": [
+          2,
+          2,
+          6
+        ]
+      },
+      {
+        "position": [
+          -4,
+          0.25,
+          0
+        ],
+        "size": [
+          2,
+          1.5,
+          6
+        ]
+      },
+      {
+        "position": [
+          0,
+          0.25,
+          6
+        ],
+        "size": [
+          6,
+          1.5,
+          2
+        ]
+      },
+      {
+        "position": [
+          0,
+          5,
+          0
+        ],
+        "size": [
+          4,
+          0.5,
+          4
+        ]
+      },
+      {
+        "position": [
+          9,
+          3,
+          9
+        ],
+        "size": [
+          1,
+          1,
+          1
+        ],
+        "collidable": false
+      }
+    ],
+    "start": [
+      0,
+      8,
+      0
+    ],
+    "on_ground": false,
+    "inputs": [
+      {
+        "move_x": 0,
+        "move_z": 0,
+        "jump": false
+      }
+    ],
+    "steps": 120,
+    "expected": {
+      "position": [
+        0,
+        5.25,
+        0
+      ],
+      "on_ground": true
+    }
+  },
+  {
+    "name": "diagonal",
+    "blocks": [
+      {
+        "position": [
+          0,
+          -0.5,
+          0
+        ],
+        "size": [
+          40,
+          1,
+          40
+        ]
+      },
+      {
+        "position": [
+          4,
+          0.5,
+          0
+        ],
+        "size": [
+          2,
+          2,
+          6
+        ]
+      },
+      {
+        "position": [
+          -4,
+          0.25,
+          0
+        ],
+        "size": [
+          2,
+          1.5,
+          6
+        ]
+      },
+      {
+        "position": [
+          0,
+          0.25,
+          6
+        ],
+        "size": [
+          6,
+          1.5,
+          2
+        ]
+      },
+      {
+        "position": [
+          0,
+          5,
+          0
+        ],
+        "size": [
+          4,
+          0.5,
+          4
+        ]
+      },
+      {
+        "position": [
+          9,
+          3,
+          9
+        ],
+        "size": [
+          1,
+          1,
+          1
+        ],
+        "collidable": false
+      }
+    ],
+    "start": [
+      0,
+      0.2,
+      0
+    ],
+    "on_ground": true,
+    "inputs": [
+      {
+        "move_x": 1,
+        "move_z": 1,
+        "jump": false
+      }
+    ],
+    "steps": 60,
+    "expected": {
+      "position": [
+        16.20453040219171,
+        0,
+        17.088413878674896
+      ],
+      "on_ground": true
+    }
+  }
+]

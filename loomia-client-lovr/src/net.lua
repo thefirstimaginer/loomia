@@ -1,62 +1,48 @@
--- Canal de rede do cliente (Lua para embedding no LOVR).
+-- Canal de rede do cliente Loomia.
 --
--- O LOVR não expõe UDP na API padrão. Este módulo abre um processo auxiliar
--- (socket UDP real) e troca mensagens JSON por pipe stdin/stdout:
+-- Usa o módulo nativo `udp` do LoomiaEngine (`require('udp')`), sem processo
+-- auxiliar: um socket UDP não bloqueante, lido uma vez por frame.
 --
---     lua src/netbridge.lua <host> <port>
---
---   cliente → bridge   {"type":"connect", ...}
---                      {"type":"send", "data":"<json>"}
---                      {"type":"close"}
---                      {"type":"quit"}
---
---   bridge → cliente   {"type":"up"}
---                      {"type":"down", "reason":"..."}
---                      {"type":"data", "data":"<json>"}
---
--- O fio do servidor (UDP) é feito pelo `src/netbridge.lua` com LuaSocket.
---
--- IMPORTANTE: quando houver ponte nativa (módulo C que implementa
--- `connect/send/close/update`), ela é usada; caso contrário, o módulo assume
--- que o ambiente fornece `udp` (ver README) e falha com mensagem clara.
+-- O AppImage do cliente abre uma ponte local em 127.0.0.1:7788 por segurança
+-- (o jogo nunca abre porta própria). O módulo aponta para lá por padrão; para
+-- falar direto com a sala, passe `host`/`port` da sala em `net.new`.
 
 local net = {}
 net.__index = net
 
+local protocol = require('src.protocol')
+
 net.TICK_RATE = 30
 net.INPUT_INTERVAL = 1 / net.TICK_RATE
+net.TIMEOUT = 'timeout'
 
 local function nowSeconds()
   return (lovr.timer and lovr.timer.getTime) and lovr.timer.getTime() or os.clock()
 end
 
---- `transport` é a ponte (padrão: a do LOVR/ambiente).
--- Deve implementar:
---   connect(config, callbacks) -> true | false, erro
---   send(json) -> void
---   close() -> void
---   update() -> void (chamada a cada frame; dispara callbacks de dados)
-local function defaultTransport()
-  -- `lovr.udp` não existe; quem integrar a ponte nativa registra o módulo.
-  local ok, module = pcall(require, 'loomiaudp')
-  if ok and type(module) == 'table' then return module end
+local function loadUdp()
+  local ok, module = pcall(require, 'udp')
+  if ok and type(module) == 'table' and module.connect then return module end
+  -- Ambiente de teste/navegador pode expor o módulo em `loomia.udp`.
+  local lovrNamespace = rawget(_G, 'lovr')
+  if lovrNamespace and lovrNamespace.udp then return lovrNamespace.udp end
   return nil
 end
 
-function net.new(host, port, transport)
+function net.new(host, port)
   local self = setmetatable({}, net)
-  self.host = host
-  self.port = port
-  self.transport = transport or defaultTransport()
+  self.host = host or '127.0.0.1'
+  self.port = port or 7788
+  self.udp = loadUdp()
   self.sequence = 0
+  self.ack = 0
   self.pingId = 0
   self.pingMs = nil
   self.lastHeard = nil
-  self.ack = 0
-  self.tick = 0
+  self.helloAt = nil
   self.closed = false
   self.onMessage = {}
-  self.welcomeAt = nil
+  self.connected = false
   return self
 end
 
@@ -66,98 +52,94 @@ function net:hello(token, name, appearance)
   self.appearance = appearance
 end
 
---- Conecta e envia o `hello`. Devolve true ou false + mensagem.
+--- Abre o socket. Devolve true ou false + mensagem.
 function net:connect()
-  if not self.transport then
-    return false, 'rede UDP indisponível neste cliente (veja loomia-client-lovr/README.md)'
+  if not self.udp then
+    return false, 'módulo udp ausente (use o LoomiaEngine)'
   end
 
-  local ok, err = self.transport.connect({ host = self.host, port = self.port }, {
-    onUp = function() self.connected = true end,
-    onDown = function(reason)
-      self.connected = false
-      self.lastError = reason
-    end,
-    onData = function(text) self:handleLine(text) end,
-  })
+  local ok, err = self.udp.connect(self.host, self.port)
   if not ok then
-    return false, err or 'não foi possível abrir a conexão UDP'
+    return false, err or 'não consegui abrir o socket UDP'
   end
 
   self.connected = true
   self.lastHeard = nowSeconds()
-  self:send({
-    t = 'hello',
-    token = self.token,
-    name = self.name,
-    appearance = self.appearance,
-  })
+  self:sendHello()
   return true
 end
 
---- Processa uma mensagem JSON recebida (chamada pela ponte).
-function net:handleLine(text)
-  local message
-  local ok, decoded = pcall(lovr.data.decode, 'json', text)
-  if ok and type(decoded) == 'table' then
-    message = decoded
-  else
-    ok, message = pcall(require('src.json').decode, text)
-  end
-  if not ok or type(message) ~= 'table' or not message.t then
-    return
-  end
+--- O `hello` pode se perder no UDP: o cliente repete até receber `welcome`.
+function net:sendHello()
+  self.helloAt = nowSeconds()
+  self:send(protocol.hello(self.token, self.name, self.appearance))
+end
+
+--- Processa uma mensagem recebida (string JSON).
+function net:handle(text)
+  local message = protocol.decode(text)
+  if not message then return end
 
   self.lastHeard = nowSeconds()
-  if message.t == 'snapshot' then
-    self.tick = message.tick or self.tick
-    self.ack = message.ack or self.ack
-  elseif message.t == 'welcome' then
-    self.welcomeAt = nowSeconds()
+
+  if message.t == 'welcome' then
+    self.welcome = message
+  elseif message.t == 'snapshot' then
+    self.ack = protocol.parseSnapshot(message, self.playerId).ack
   elseif message.t == 'pong' then
     self.pingMs = (nowSeconds() - (message.time or nowSeconds())) * 1000
   end
 
   local handler = self.onMessage[message.t]
   if handler then handler(message) end
-  if self.onMessage['*'] then self.onMessage['*'](message) end
 end
 
---- Serializa e envia uma mensagem para a sala.
 function net:send(message)
-  if not self.transport or self.closed then return end
-  local ok, encoded = pcall(lovr.data.encode, message, 'json')
-  if not ok or not encoded then
-    encoded = require('src.json').encode(message)
-  end
-  self.transport.send(encoded)
+  if not self.udp or self.closed then return end
+  self.udp.send(protocol.encode(message))
 end
 
---- Deve ser chamado a cada frame (a ponte pode ter dados pendentes).
+--- Lê todos os datagramas pendentes (uma vez por frame).
 function net:poll()
-  if self.transport and self.transport.update then self.transport.update() end
+  if not self.udp or self.closed then return end
+  while true do
+    local data, address = self.udp.receive()
+    if not data then
+      if address ~= net.TIMEOUT then
+        self.lastError = address
+      end
+      break
+    end
+    self.lastAddress = address
+    self:handle(data)
+  end
+
+  -- Reenvia o hello a cada 500 ms enquanto a sala não responder.
+  if not self.welcome and self.helloAt and nowSeconds() - self.helloAt > 0.5 then
+    self:sendHello()
+  end
 end
 
 function net:ping()
   self.pingId = self.pingId + 1
-  self:send({ t = 'ping', id = self.pingId, time = nowSeconds() })
+  self:send(protocol.ping(self.pingId, nowSeconds()))
 end
 
 function net:chat(text)
-  self:send({ t = 'chat', text = text })
+  self:send(protocol.chat(text))
 end
 
 function net:respawn()
-  self:send({ t = 'respawn' })
+  self:send(protocol.respawn())
 end
 
 function net:close()
   if self.closed then return end
   self.closed = true
-  if self.transport then
+  if self.udp then
     pcall(function()
-      self:send({ t = 'bye' })
-      self.transport.close()
+      self:send(protocol.bye())
+      self.udp.close()
     end)
   end
 end
