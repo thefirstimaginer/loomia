@@ -1,0 +1,82 @@
+{
+  "_comment": "Mensagens canônicas do protocolo. Os testes de Go e Lua leem este arquivo e verificam que cada lado interpreta/serializa exatamente estes campos.",
+  "constants": {
+    "tick_rate": 30,
+    "move_speed": 12.5,
+    "jump_speed": 40.0,
+    "gravity": -95.0,
+    "max_fall_speed": -90.0,
+    "character_radius": 0.55,
+    "character_height": 3.0,
+    "step_height": 0.6,
+    "snap_distance": 0.55,
+    "eye_height": 1.55
+  },
+  "client_to_server": [
+    {
+      "t": "hello",
+      "token": "abc",
+      "name": "Ana",
+      "appearance": {
+        "username": "Ana",
+        "body_color": [234, 190, 25],
+        "shirt_color": [15, 120, 190],
+        "pants_color": [35, 75, 45],
+        "hat": "cap"
+      }
+    },
+    { "t": "input", "seq": 12, "move_x": 1, "move_z": 0, "jump": false, "yaw": 0.4 },
+    { "t": "chat", "text": "oi" },
+    { "t": "ping", "id": 7, "time": 123.45 },
+    { "t": "respawn" },
+    { "t": "bye" }
+  ],
+  "server_to_client": [
+    {
+      "t": "welcome",
+      "id": 3,
+      "tick": 120,
+      "tick_rate": 30,
+      "map_id": "baseplate",
+      "map_name": "Baseplate",
+      "world_version": "baseplate-1a2b3c4d5e6f",
+      "spawn": [0, 1, 4],
+      "sky_color": [150, 200, 240],
+      "players": [
+        {
+          "id": 4,
+          "name": "Bob",
+          "p": [0, 1, 4],
+          "v": [0, 0, 0],
+          "yaw": 0,
+          "ground": true,
+          "appearance": { "username": "Bob" }
+        }
+      ],
+      "chat": [{ "from": "Bob", "text": "oi" }]
+    },
+    {
+      "t": "snapshot",
+      "tick": 121,
+      "players": [
+        {
+          "id": 3,
+          "ack": 12,
+          "p": [0, 1, 4],
+          "v": [0, 0, 0],
+          "yaw": 0.4,
+          "ground": true,
+          "appearance": { "username": "Ana" }
+        }
+      ]
+    },
+    {
+      "t": "players",
+      "players": [{ "id": 3, "name": "Ana", "appearance": { "username": "Ana" } }]
+    },
+    { "t": "chat", "from": "Bob", "text": "oi" },
+    { "t": "pong", "id": 7, "time": 123.45, "server_time": 1729000000.12 },
+    { "t": "respawn", "p": [0, 1, 4] },
+    { "t": "error", "message": "token inválido" }
+  ]
+}

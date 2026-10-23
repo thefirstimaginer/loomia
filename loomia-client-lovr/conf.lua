@@ -1,7 +1,7 @@
 -- Configuração da janela (lida pelo LOVR antes de carregar o main.lua).
 function lovr.conf(t)
   t.identity = 'loomia'
-  t.window.title = 'Loomia'
+  t.window.title = 'Loomia (Beta)'
   t.window.width = 1080
   t.window.height = 720
   t.window.vsync = 1
