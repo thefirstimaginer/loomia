@@ -9,17 +9,20 @@
  *   loomia-tray --title Loomia --tooltip "Cliente Loomia rodando" \
  *               --left-click "loomia-client --show" --menu "Fechar cliente=..."
  *
- * O clique esquerdo e os itens do menu executam comandos de shell (é assim que
- * a janela do cliente volta ou o cliente é encerrado de vez). Imprime " o ícone está instalado.
+ * O clique esquerdo executa um comando de shell (a janela do cliente volta ou
+ * o cliente é encerrado de vez). Imprime "ready" em stdout quando o ícone
+ * está instalado.
  *
  * Build: cc -O2 loomia-tray.c -o loomia-tray -lX11 -lm
  */
 
 #define _POSIX_C_SOURCE 200809L
 #define _DEFAULT_SOURCE
+#define _XOPEN_SOURCE 700
 
 #include <signal.h>
 #include <stdint.h>
+#include <time.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -35,10 +38,13 @@ static volatile sig_atomic_t running = 1;
 
 /* Erros de XError (bandeja ausente, reparent recusado) não podem derrubar o
  * cliente: registra no stderr e segue. */
+static volatile sig_atomic_t x_failed = 0;
+
 static int on_x_error(Display* display, XErrorEvent* error) {
   (void) display;
   fprintf(stderr, "tray: X error %d (request %d) — seguindo sem bandeja\n",
           error->error_code, error->request_code);
+  x_failed = 1;
   return 0;
 }
 
@@ -177,25 +183,40 @@ static Window create_icon_window(Display* display, int screen, unsigned char* pi
   snprintf(atom_name, sizeof(atom_name), "_NET_SYSTEM_TRAY_S%d", screen);
   Atom tray_atom = XInternAtom(display, atom_name, False);
   Window tray = XGetSelectionOwner(display, tray_atom);
-  if (tray != None) {
-    Atom xembed = XInternAtom(display, "_XEMBED", False);
-    XEvent event;
-    memset(&event, 0, sizeof(event));
-    event.xclient.type = ClientMessage;
-    event.xclient.window = tray;
-    event.xclient.message_type = xembed;
-    event.xclient.format = 32;
-    event.xclient.data.l[0] = (long) CurrentTime;
-    event.xclient.data.l[1] = 0; /* XEMBED_EMBEDDED_NOTIFY */
-    XSendEvent(display, tray, False, NoEventMask, &event);
-    /* Erros do X não podem derrubar o cliente: bandeja ausente/incompatível é
-     * só um aviso (o log registra e a janela continua viva). */
-    XReparentWindow(display, window, tray, 0, 0);
-    XMapRaised(display, window);
-    XSync(display, False);
-    return window;
+  if (tray == None) {
+    /* Sem dono não existe bandeja: NÃO deixar a janela solta na tela (era o
+     * que aparecia como uma "mini janela" flutuante sem título). Destrói e o
+     * cliente segue sem ícone. */
+    fprintf(stderr, "tray: este desktop não tem bandeja XEmbed\n");
+    XDestroyWindow(display, window);
+    return None;
   }
 
+  Atom xembed = XInternAtom(display, "_XEMBED", False);
+  XEvent event;
+  memset(&event, 0, sizeof(event));
+  event.xclient.type = ClientMessage;
+  event.xclient.window = tray;
+  event.xclient.message_type = xembed;
+  event.xclient.format = 32;
+  event.xclient.data.l[0] = (long) CurrentTime;
+  event.xclient.data.l[1] = 0; /* XEMBED_EMBEDDED_NOTIFY */
+  XSendEvent(display, tray, False, NoEventMask, &event);
+  /* Erros do X não podem derrubar o cliente: bandeja ausente/incompatível é
+   * só um aviso (o log registra e a janela continua viva). */
+  x_failed = 0;
+  XReparentWindow(display, window, tray, 0, 0);
+  XSync(display, False);
+  if (x_failed) {
+    /* O reparent foi recusado: destruir evita a "mini janela" solta. */
+    fprintf(stderr, "tray: bandeja recusou o ícone\n");
+    XDestroyWindow(display, window);
+    return None;
+  }
+  /* Só mapeia depois do reparent dar certo: a janela nasce dentro da bandeja
+   * (mapear antes fazia o clique cair no ícone errado). */
+  XMapRaised(display, window);
+  XSync(display, False);
   return window;
 }
 
@@ -228,7 +249,17 @@ int main(int argc, char** argv) {
   fflush(stdout);
   fprintf(stderr, "tray: ícone instalado (%s)\n", options.tooltip);
 
+  time_t last_attempt = 0;
   while (running) {
+    if (!icon) {
+      /* Sem bandeja: tenta de novo a cada 5 s (mas nunca deixa janela solta). */
+      time_t now = time(NULL);
+      if (now - last_attempt >= 5) {
+        last_attempt = now;
+        icon = create_icon_window(display, screen, pixels);
+      }
+    }
+
     while (XPending(display) > 0) {
       XEvent event;
       XNextEvent(display, &event);
@@ -240,7 +271,9 @@ int main(int argc, char** argv) {
     /* A bandeja pode reiniciar e soltar a janela: recria se sumiu. */
     XWindowAttributes attributes;
     if (icon && (!XGetWindowAttributes(display, icon, &attributes) || attributes.map_state == IsUnmapped)) {
-      icon = create_icon_window(display, screen, pixels);
+      XDestroyWindow(display, icon);
+      icon = None;
+      last_attempt = time(NULL);
     }
     usleep(100000);
   }

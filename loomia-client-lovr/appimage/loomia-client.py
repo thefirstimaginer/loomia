@@ -26,6 +26,7 @@ from __future__ import annotations
 import base64
 import hashlib
 import json
+import signal
 import os
 import queue
 import re
@@ -34,6 +35,7 @@ import socket
 import struct
 import subprocess
 import sys
+import tempfile
 import threading
 import time
 import urllib.parse
@@ -196,31 +198,106 @@ def register_protocol(force: bool = False) -> None:
 # Instância única
 # ---------------------------------------------------------------------------
 
+# Handle do lock mantido vivo pela vida do processo (o flock é liberado no
+# momento em que o arquivo é fechado).
+_LOCK_HANDLE = None
+
+
+def _lock_owner_pid() -> int | None:
+    try:
+        return int(LOCK_PATH.read_text(encoding="utf-8").strip() or "0") or None
+    except (OSError, ValueError):
+        return None
+
+
 def acquire_lock() -> bool:
     """Devolve True se esta é a instância principal."""
+    global _LOCK_HANDLE
     STATE_DIR.mkdir(parents=True, exist_ok=True)
     try:
         import fcntl
-        handle = LOCK_PATH.open("w")
-        fcntl.flock(handle.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
-        handle.write(str(os.getpid()))
-        handle.flush()
-        global _lock_handle
-        _lock_handle = handle
-        return True
+        handle = LOCK_PATH.open("a+")
     except (OSError, ImportError):
         return False
-
-
-def show_existing() -> bool:
-    """Pede à instância principal para mostrar a janela (segundo clique)."""
     try:
-        with socket.create_connection(("127.0.0.1", BRIDGE_PORT), timeout=1.5) as connection:
-            connection.sendall(json.dumps({"type": "show"}).encode("utf-8") + b"\n")
-            reply = connection.recv(256)
-            return reply.startswith(b"ok")
+        fcntl.flock(handle.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except OSError:
+        handle.close()
+        log("outra instância já está rodando (lock ocupado)")
+        return False
+    # Limpa o lock: o PID desta instância é a única informação relevante.
+    handle.seek(0)
+    handle.truncate()
+    handle.write(str(os.getpid()))
+    handle.flush()
+    _LOCK_HANDLE = handle
+    return True
+
+
+def lock_busy() -> bool:
+    """Pergunta ao lock (sem tomá-lo) se existe instância principal viva.
+
+    ATENÇÃO: fechar o arquivo do teste JÁ libera qualquer lock que ele tenha
+    obtido; por isso o `finally` só roda depois do `return` ser avaliado.
+    """
+    try:
+        own = LOCK_PATH.open("a+")
     except OSError:
         return False
+    try:
+        import fcntl
+        try:
+            fcntl.flock(own.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except OSError:
+            return True  # alguém segura o lock
+        # Conseguiu: ninguém segurava. Libera antes de sair (o close faria o
+        # mesmo, mas explícito não deixa dúvida sobre a ordem).
+        fcntl.flock(own.fileno(), fcntl.LOCK_UN)
+        return False
+    except ImportError:
+        return False
+    finally:
+        try:
+            own.close()
+        except OSError:
+            pass
+
+
+def show_existing(timeout: float = 1.5) -> bool:
+    """Pede à instância principal para mostrar a janela (segundo clique)."""
+    try:
+        # A ponte é UDP: pedimos "show" e esperamos o "ok" de volta.
+        probe = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        probe.settimeout(0.35)
+        message = json.dumps({"type": "show"}).encode("utf-8")
+        try:
+            waited = 0.0
+            while waited < timeout:
+                probe.sendto(message, ("127.0.0.1", BRIDGE_PORT))
+                try:
+                    reply, _ = probe.recvfrom(64)
+                except socket.timeout:
+                    reply = b""
+                if reply.startswith(b"ok"):
+                    return True
+                waited += 0.35
+            # Último recurso: acorda pelo sinal do PID no lock.
+            signal_handle()
+            return False
+        finally:
+            probe.close()
+    except OSError:
+        return False
+
+
+def signal_handle() -> None:
+    """Acorda a instância principal (segundo clique / menu da bandeja)."""
+    pid = _lock_owner_pid()
+    if pid and pid != os.getpid():
+        try:
+            os.kill(pid, signal.SIGUSR1)
+        except OSError:
+            pass
 
 
 # ---------------------------------------------------------------------------
@@ -396,11 +473,15 @@ class GameBridge:
         self.host = host
         self.port = port
         self.socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        self.socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        # SEM SO_REUSEADDR: numa porta UDP ele deixa o segundo processo
+        # "ligar" no mesmo endereço e engolir os pacotes da primeira instância
+        # (era o motivo de o 2º clique nunca receber o "ok").
         self.socket.bind((host, port))
         self.running = True
         self.clients: dict[tuple[str, int], tuple[str, int]] = {}
         self.lock = threading.Lock()
+        # Último comando de controle ("show") recebido; um socket que chega
+        # depois de uma resposta perdida é respondido por aqui.
 
     def serve(self) -> None:
         log(f"ponte UDP do engine em {self.host}:{self.port}")
@@ -421,9 +502,18 @@ class GameBridge:
                         message = json.loads(data.decode("utf-8"))
                     except ValueError:
                         message = None
-                    if isinstance(message, dict) and message.get("type") == "show":
-                        COMMANDS.put("show")
-                        self.socket.sendto(b"ok\n", address)
+                    kind = message.get("type") if isinstance(message, dict) else None
+                    if kind in ("show", "ping"):
+                        if kind == "show":
+                            COMMANDS.put("show")
+                        # `ping`: responde "ok" para a "segunda instância" saber
+                        # que a principal está viva sem abrir janela. O canal de
+                        # controle é o MESMO socket; a resposta é um datagrama
+                        # "ok" (recebido por `show_existing`).
+                        try:
+                            self.socket.sendto(b"ok", address)
+                        except OSError:
+                            pass
                         continue
                 with self.lock:
                     target = self.clients.get(address)
@@ -457,10 +547,44 @@ class GameBridge:
 # ---------------------------------------------------------------------------
 
 class Tray:
-    def __init__(self, appimage: Path):
-        self.appimage = appimage
+    def __init__(self):
+        # O handler é o AppRun do AppImage (via lançador estável), não o
+        # binário do engine: é ele que sabe reabrir a janela/entrar no jogo.
+        self.appimage = app_path()
         self.process: subprocess.Popen | None = None
         self.helper = APPDIR / "usr" / "bin" / "loomia-tray"
+
+    def kill_stale(self) -> None:
+        """Mate helpers de bandeja de sessões anteriores (se sobrou algum).
+
+        NUNCA mata um processo cujo argv não seja exatamente o helper: com
+        `pgrep -f` um AppImage cujo caminho contenha "loomia-tray" casaria com
+        o próprio cliente.
+        """
+        try:
+            listing = subprocess.run(["ps", "-eo", "pid=,args="], check=False,
+                                     capture_output=True, text=True).stdout
+        except OSError:
+            return
+        for line in listing.splitlines():
+            stripped = line.strip()
+            if not stripped:
+                continue
+            pid_text, _, args = stripped.partition(" ")
+            if not pid_text.isdigit():
+                continue
+            pid = int(pid_text)
+            parts = args.split()
+            if pid == os.getpid() or not parts:
+                continue
+            # O helper é o 1º argumento (o executável) — não um pedaço de path.
+            if parts[0] != str(self.helper):
+                continue
+            try:
+                os.kill(pid, signal.SIGTERM)
+                log(f"bandeja antiga encerrada (pid {pid})")
+            except OSError:
+                pass
 
     def start(self) -> None:
         if os.environ.get("LOOMIA_NO_TRAY") == "1" or not self.helper.exists():
@@ -470,123 +594,15 @@ class Tray:
             str(self.helper),
             "--title", APP_NAME,
             "--tooltip", "Cliente Loomia rodando",
-            "--left-click", f"{self.appimage} --show",
-            "--menu", f"Abrir cliente={self.appimage} --show",
-            "--menu", f"Fechar cliente={self.appimage} --quit",
+            "--left-click", f"{shlex.quote(str(self.appimage))} --show",
+            "--menu", f"Abrir cliente={shlex.quote(str(self.appimage))} --show",
+            "--menu", f"Fechar cliente={shlex.quote(str(self.appimage))} --quit",
         ], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
         log("ícone da bandeja iniciado")
 
     def stop(self) -> None:
         if self.process and self.process.poll() is None:
             self.process.terminate()
-
-
-# ---------------------------------------------------------------------------
-# Janela de fallback (Xlib puro, sem Tk)
-# ---------------------------------------------------------------------------
-
-class X11Window:
-    """Janela mínima via libX11 quando o Python não tem Tk.
-
-    Desenha o texto com a fonte padrão do servidor X (sem dependência de
-    fontes extras). Minimizar = esconder; a vida útil continua no processo.
-    """
-
-    WIDTH = 460
-    HEIGHT = 260
-
-    def __init__(self):
-        import ctypes
-        import ctypes.util
-
-        self.ctypes = ctypes
-        self.lib = ctypes.CDLL(ctypes.util.find_library("X11") or "libX11.so.6")
-        self.lib.XOpenDisplay.restype = ctypes.c_void_p
-        self.lib.XOpenDisplay.argtypes = [ctypes.c_char_p]
-        self.display = self.lib.XOpenDisplay(None)
-        self.window = None
-        if not self.display:
-            return
-
-        self.lib.XDefaultRootWindow.restype = ctypes.c_ulong
-        self.lib.XDefaultRootWindow.argtypes = [ctypes.c_void_p]
-        root = self.lib.XDefaultRootWindow(self.display)
-
-        self.lib.XCreateSimpleWindow.restype = ctypes.c_ulong
-        self.lib.XCreateSimpleWindow.argtypes = [ctypes.c_void_p, ctypes.c_ulong,
-                                                 ctypes.c_int, ctypes.c_int, ctypes.c_uint,
-                                                 ctypes.c_uint, ctypes.c_uint, ctypes.c_ulong,
-                                                 ctypes.c_ulong]
-        self.window = self.lib.XCreateSimpleWindow(self.display, root, 120, 120,
-                                                   self.WIDTH, self.HEIGHT, 2, 0xEABE19, 0x141E30)
-        self.lib.XStoreName.argtypes = [ctypes.c_void_p, ctypes.c_ulong, ctypes.c_char_p]
-        self.lib.XStoreName(self.display, self.window, b"Loomia")
-        self.lib.XSelectInput.argtypes = [ctypes.c_void_p, ctypes.c_ulong, ctypes.c_long]
-        self.lib.XSelectInput(self.display, self.window, (1 << 17) | (1 << 15))  # Exposure | Visibility
-        self.gc = self.lib.XDefaultGC(self.display, self.lib.XDefaultScreen(self.display))
-
-    def _draw(self) -> None:
-        if not self.window:
-            return
-        ctypes_ = self.ctypes
-        lib = self.lib
-        lib.XSetForeground.argtypes = [ctypes_.c_void_p, ctypes_.c_ulong, ctypes_.c_ulong]
-        lib.XSetForeground(self.display, self.gc, 0x141E30)
-        lib.XFillRectangle.argtypes = [ctypes_.c_void_p, ctypes_.c_ulong, ctypes_.c_ulong,
-                                       ctypes_.c_int, ctypes_.c_int, ctypes_.c_uint, ctypes_.c_uint]
-        lib.XFillRectangle(self.display, self.window, self.gc, 0, 0, self.WIDTH, self.HEIGHT)
-
-        lib.XDrawString.argtypes = [ctypes_.c_void_p, ctypes_.c_ulong, ctypes_.c_ulong,
-                                    ctypes_.c_int, ctypes_.c_int, ctypes_.c_char_p, ctypes_.c_int]
-
-        def text(line: str, x: int, y: int, colour: int, size: int = 1) -> None:
-            lib.XSetForeground(self.display, self.gc, colour)
-            lib.XDrawString(self.display, self.window, self.gc, x, y,
-                            line.encode("utf-8"), len(line.encode("utf-8")))
-
-        text("Cliente Loomia Pronto", 24, 50, 0x45D5FF)
-        text("Va para o site do Loomia e se divirta!", 24, 86, 0xFFFFFF)
-        text(f"Status: {STATE.status}", 24, 130, 0x9FD4FF)
-        text(f"Mapa: {STATE.map_name or '-'}", 24, 156, 0xCCCCCC)
-        text(f"Sala: {STATE.server or '-'}", 24, 182, 0xCCCCCC)
-        text("Minimize esta janela: o cliente continua na bandeja.", 24, 222, 0x8899AA)
-
-    def show(self) -> None:
-        if not self.window:
-            return
-        self.lib.XMapRaised.argtypes = [self.ctypes.c_void_p, self.ctypes.c_ulong]
-        self.lib.XMapRaised(self.display, self.window)
-        self.lib.XFlush(self.display)
-        self._draw()
-        self.lib.XFlush(self.display)
-
-    def hide(self) -> None:
-        if not self.window:
-            return
-        self.lib.XUnmapWindow.argtypes = [self.ctypes.c_void_p, self.ctypes.c_ulong]
-        self.lib.XUnmapWindow(self.display, self.window)
-        self.lib.XFlush(self.display)
-
-    def pump(self) -> None:
-        """Drena eventos do X sem bloquear (Expose = redesenha)."""
-        if not self.display or not self.window:
-            return
-        if not getattr(self, "_event", None):
-            self._event = (self.ctypes.c_char * 192)()  # XEvent cabe em 192 bytes
-        lib = self.lib
-        lib.XPending.argtypes = [self.ctypes.c_void_p]
-        lib.XPending.restype = self.ctypes.c_int
-        lib.XNextEvent.argtypes = [self.ctypes.c_void_p, self.ctypes.c_void_p]
-        while lib.XPending(self.display) > 0:
-            lib.XNextEvent(self.display, self.ctypes.byref(self._event))
-            self._draw()
-
-    def destroy(self) -> None:
-        if self.display and self.window:
-            self.lib.XDestroyWindow(self.display, self.window)
-            self.lib.XCloseDisplay(self.display)
-            self.window = None
-            self.display = None
 
 
 # ---------------------------------------------------------------------------
@@ -600,20 +616,25 @@ class ClientWindow:
         self.on_quit = on_quit
         self.root = None
         self.labels = {}
+        self.missing_tk = False
 
     def _build(self) -> None:
         try:
             import tkinter as tk
             from tkinter import ttk
         except ImportError:
-            # Python sem Tk (build mínimo): cai para a janela em Xlib.
-            self.fallback = X11Window()
+            # Python sem Tk: NADA de janela improvisada em Xlib (ela não tinha
+            # widgets, não redimensionava e parecia "bugar"). O cliente segue
+            # vivo na bandeja; só a janela fica indisponível.
+            self.missing_tk = True
+            log("Tk indisponível: o cliente funciona pela bandeja, sem janela")
             return
 
-        self.root = tk.Tk()
+        self.root = tk.Tk(className=APP_NAME)
         self.root.title(APP_NAME)
-        self.root.geometry("460x320")
-        self.root.minsize(420, 300)
+        # Tamanho fixo e confortável: uma janela minúscula parecia "quebrada".
+        self.root.geometry("520x360")
+        self.root.minsize(460, 320)
         try:
             self.root.iconphoto(True, tk.PhotoImage(file=str(ensure_icon())))
         except Exception:
@@ -652,40 +673,34 @@ class ClientWindow:
         ttk.Button(buttons, text="Minimizar para a bandeja", command=self.minimize).pack(side="left", padx=8)
         ttk.Button(buttons, text="Fechar Cliente", command=self.on_quit).pack(side="right")
 
+        # Um erro dentro do callback da janela não pode derrubar o cliente.
+        self.root.report_callback_exception = lambda *args: log(f"erro na janela: {args}")
         self.root.after(250, self._refresh)
 
     def _refresh(self) -> None:
         if not self.root:
             return
-        self.labels["status"].configure(text=f"Status: {STATE.status}")
-        self.labels["map"].configure(text=f"Mapa: {STATE.map_name or '—'}")
-        self.labels["server"].configure(text=f"Sala: {STATE.server or '—'}")
+        try:
+            self.labels["status"].configure(text=f"Status: {STATE.status}")
+            self.labels["map"].configure(text=f"Mapa: {STATE.map_name or '—'}")
+            self.labels["server"].configure(text=f"Sala: {STATE.server or '—'}")
+        except Exception as error:
+            log(f"falha ao atualizar a janela: {error}")
+            return
         self.root.after(250, self._refresh)
 
     def pump(self) -> None:
-        """Drena a janela de fallback (Xlib); o Tk cuida do próprio loop."""
-        fallback = getattr(self, "fallback", None)
-        if fallback:
-            try:
-                fallback.pump()
-            except Exception:
-                pass
+        """No-op com Tk: o próprio evento do Tk mantém a janela viva."""
 
     def _open_site(self) -> None:
         origin = STATE.last_launch.get("origin") or DEFAULT_MASTER
         subprocess.run(["xdg-open", origin], check=False, capture_output=True)
 
     def show(self) -> None:
-        if getattr(self, "fallback", None):
-            self.fallback.show()
-            return
-        if not self.root and not getattr(self, "fallback", None):
-            self._build()
-        if getattr(self, "fallback", None):
-            self.fallback.show()
-            return
         if not self.root:
-            return
+            self._build()
+        if not self.root:
+            return  # sem Tk: a bandeja continua funcionando
         self.root.deiconify()
         self.root.lift()
         try:
@@ -694,20 +709,15 @@ class ClientWindow:
             pass
 
     def minimize(self) -> None:
-        if getattr(self, "fallback", None):
-            self.fallback.hide()
-            return
         if self.root:
             self.root.iconify()
 
     def run(self) -> None:
         self.show()
-        self.root.mainloop()
+        if self.root:
+            self.root.mainloop()
 
     def destroy(self) -> None:
-        if getattr(self, "fallback", None):
-            self.fallback.destroy()
-            return
         if self.root:
             try:
                 self.root.destroy()
@@ -729,22 +739,58 @@ def main() -> int:
         return 0
     link = next((argument for argument in arguments if argument.lower().startswith("loomia:")), None)
 
-    # Instância já rodando? Só mostra a janela existente; se veio um link, a
-    # instância principal o recebe pelo arquivo (ver `link_queue_loop`).
-    if not acquire_lock():
+    # `--show`/`--quit` chegam da bandeja: só avisam a instância principal.
+    if "--show" in arguments or "--quit" in arguments:
+        show_existing(timeout=0.9)
+        return 0
+
+    # `--force` abre uma sessão nova mesmo com outra viva (diagnóstico).
+    if not ("--force" in arguments) and lock_busy():
+        log("já existe uma instância rodando: mostrando a janela dela")
         if link:
             STATE_DIR.mkdir(parents=True, exist_ok=True)
             try:
                 LAUNCH_FILE.write_text(json.dumps(parse_launch_link(link) or {}), encoding="utf-8")
             except OSError:
                 pass
+        if not show_existing(timeout=0.9):
+            log("a instância principal não respondeu; aguarde um instante e tente de novo")
+        return 0
+
+    if not acquire_lock():
+        # Só chega aqui em condição de corrida (duas aberturas simultâneas).
         show_existing()
         return 0
+    log("instância única: assumindo como principal")
     PID_PATH.write_text(str(os.getpid()), encoding="utf-8")
     log(f"cliente iniciado (pid {os.getpid()})")
 
-    bridge = GameBridge()
-    threading.Thread(target=bridge.serve, daemon=True).start()
+    # Uma única bandeja por sessão: fecha o helper antigo antes de subir o novo.
+    tray = Tray()
+    tray.kill_stale()
+
+    # Rede (se a porta estiver presa por um processo morto, o cliente ainda
+    # abre: a bandeja e a janela não podem depender disso).
+    bridge = None
+    try:
+        bridge = GameBridge()
+    except OSError as error:
+        log(f"ponte UDP indisponível: {error}")
+        STATE.status = "Ponte UDP ocupada (outra instância?)"
+
+    if bridge:
+        threading.Thread(target=bridge.serve, daemon=True).start()
+
+    # Um SIGUSR1 acorda a janela (segundo clique / bandeja) sem socket.
+    signal.signal(signal.SIGUSR1, lambda *_: COMMANDS.put("show"))
+    # SIGTERM/SIGINT encerram como o menu da bandeja: sem processo fantasma
+    # segurando lock, porta e ícone.
+    def _on_stop(*_args) -> None:
+        COMMANDS.put("quit")
+    signal.signal(signal.SIGTERM, _on_stop)
+    # Ctrl+C no terminal do AppImage NÃO fecha o cliente (ele agora vive na
+    # bandeja); só o menu "Fechar cliente"/`--quit` encerra.
+    signal.signal(signal.SIGINT, lambda *_: log("Ctrl+C ignorado; use a bandeja para fechar"))
 
     # Nada pendente de execuções anteriores é reutilizado: cada sessão começa
     # pelo link que ESTA instância recebeu.
@@ -753,7 +799,6 @@ def main() -> int:
     except OSError:
         pass
 
-    tray = Tray(appimage)
     if "--no-tray" not in arguments and os.environ.get("LOOMIA_NO_TRAY") != "1":
         tray.start()
 
@@ -766,19 +811,21 @@ def main() -> int:
         log("fechando cliente")
         if STATE.game_pid and is_alive(STATE.game_pid):
             terminate(STATE.game_pid)
-        bridge.stop()
+        if bridge:
+            bridge.stop()
         tray.stop()
         window.destroy()
 
     def request_hide() -> None:
         window.minimize()
 
+    global window
     window = ClientWindow(appimage, request_hide, request_quit)
 
     def link_queue_loop() -> None:
         """Recebe os links gravados por cliques seguintes no AppImage."""
         while not quitting["value"]:
-            time.sleep(0.5)
+            time.sleep(0.4)
             if not LAUNCH_FILE.exists():
                 continue
             try:
@@ -790,13 +837,11 @@ def main() -> int:
                 COMMANDS.put("launch:" + json.dumps(pending))
                 COMMANDS.put("show")
 
+    threading.Thread(target=link_queue_loop, daemon=True).start()
     if link:
         threading.Thread(target=launch_from_link, args=(link,), daemon=True).start()
-    else:
-        threading.Thread(target=link_queue_loop, daemon=True).start()
 
     def pump_commands() -> None:
-        window.pump()
         try:
             while True:
                 command = COMMANDS.get_nowait()
@@ -815,9 +860,9 @@ def main() -> int:
         if not quitting["value"] and window.root:
             window.root.after(200, pump_commands)
 
+    window.show()
     if window.root is None:
-        # Sem Tk: loop manual com a janela X11 (a bandeja/segunda instância
-        # continuam funcionando via `COMMANDS`).
+        # Sem Tk: mantém o processo vivo (bandeja + links), sem janela feia.
         while not quitting["value"]:
             pump_commands()
             time.sleep(0.1)
@@ -827,7 +872,35 @@ def main() -> int:
     try:
         window.root.mainloop()
     except KeyboardInterrupt:
-        request_quit()
+        log("Ctrl+C no terminal ignorado (feche pelo ícone da bandeja)")
+    except Exception as error:  # noqa: BLE001
+        # Exceção no loop da janela não pode matar o cliente em silêncio.
+        log(f"erro no loop da janela: {error}")
+    # A janela fechou / o loop saiu: se o usuário NÃO pediu para fechar, o
+    # cliente continua vivo na bandeja (janela escondida) em vez de virar
+    # fantasma com a porta presa ou sumir sem motivo.
+    if not quitting["value"]:
+        log("janela fechada; cliente continua na bandeja")
+        if window.root:
+            window.minimize()
+        while not quitting["value"]:
+            try:
+                while True:
+                    command = COMMANDS.get_nowait()
+                    if command == "show":
+                        window.show()
+                    elif command.startswith("launch:"):
+                        launch = json.loads(command[len("launch:"):])
+                        STATE.map_name = launch.get("map", "")
+                        STATE.server = launch.get("server", "")
+                        start_game(launch)
+                    elif command == "quit":
+                        request_quit()
+                        break
+            except queue.Empty:
+                pass
+            time.sleep(0.2)
+    request_quit()
     return 0
 
 
