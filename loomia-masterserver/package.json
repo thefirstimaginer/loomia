@@ -1,13 +1,27 @@
 {
   "name": "loomia-masterserver",
   "private": true,
-  "version": "1.0.0",
+  "version": "2.0.0",
   "type": "module",
-  "description": "Master server do Loomia: contas, catálogo de mapas, alocação de salas (Go) e handler loomia://",
+  "description": "Master server do Loomia (TypeScript + PostgreSQL): contas, avatares, catálogo de mapas, alocação de salas e links loomia://",
   "scripts": {
-    "start": "node server.js",
-    "dev": "node --watch server.js",
-    "check": "node --check server.js && node --test"
+    "start": "node dist/src/server.js",
+    "build": "tsc -p tsconfig.json && node scripts/copy-assets.mjs",
+    "dev": "tsx watch src/server.ts",
+    "db:migrate": "tsx src/db/migrate.ts",
+    "db:setup": "bash scripts/setup-db.sh",
+    "seed": "tsx src/db/seed.ts",
+    "test": "npm run build && node --test dist/test/api.test.js",
+    "check": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "pg": "8.16.3"
+  },
+  "devDependencies": {
+    "@types/node": "24.19.2",
+    "@types/pg": "8.15.6",
+    "tsx": "4.20.6",
+    "typescript": "5.9.3"
   },
   "engines": {
     "node": ">=20"

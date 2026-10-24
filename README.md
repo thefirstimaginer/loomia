@@ -18,15 +18,30 @@ Jogo online de mundos em blocos, inspirado no Roblox clássico de 2008.
 └─────────────────────────┘                   └─────────────────────────┘
 ```
 
-| Pasta                 | Linguagem            | Papel                                                      |
-|-----------------------|----------------------|------------------------------------------------------------|
-| `loomia-frontend`     | React + Vite         | site: contas, avatar, catálogo, botão “Jogar”              |
-| `loomia-masterserver` | Node.js (nativo)     | API central, sessões, alocação de salas, links `loomia://` |
-| `loomia-gameserver`   | Go                   | sala: física, colisão, snapshots UDP a 30 Hz               |
-| `loomia-engine`       | C / Lua (fork LOVR)  | **LoomiaEngine**: engine do jogo + módulo `udp`            |
-| `loomia-client-lovr`  | Lua + Python         | o jogo, o controlador e o build do **AppImage**            |
-| `docs/protocolo.md`   | —                    | protocolo único (cliente ↔ sala) e constantes de física    |
-| `data/`               | JSON                 | banco do master (`masterserver.json`) e mapas (`*.loom`)   |
+| Pasta                 | Linguagem              | Papel                                                        |
+|-----------------------|------------------------|--------------------------------------------------------------|
+| `loomia-frontend`     | React + Vite           | site: landing, Explorar Mundos, contas, avatares, Corner, Download |
+| `loomia-masterserver` | **TypeScript** + PostgreSQL | API, sessões (cookie + scrypt), avatares, mapas, salas, links `loomia://` |
+| `loomia-gameserver`   | Go                     | sala: física, colisão, snapshots UDP a 30 Hz                 |
+| `loomia-engine`       | C / Lua (fork LOVR)    | **LoomiaEngine**: engine do jogo + módulo `udp`              |
+| `loomia-client-lovr`  | Lua + Python           | o jogo, o controlador e o build do **AppImage**              |
+| `docs/protocolo.md`   | —                      | protocolo único (cliente ↔ sala) e constantes de física      |
+| `data/`               | JSON                   | mapas (`worlds/*.loom`) — o catálogo vive no PostgreSQL      |
+
+### Páginas do site
+| Rota           | Página                                                                         |
+|----------------|--------------------------------------------------------------------------------|
+| `/`            | landing com prévia de mundo e convite para criar conta                         |
+| `/explorar`    | **Explorar Mundos**: busca por nome/autor/descrição e entrar (**exige login**) |
+| `/login`       | entrar com **email ou apelido** + senha                                        |
+| `/registrar`   | Nome, Sobrenome, Apelido, Email, Senha, Repetir Senha                          |
+| `/boas-vindas` | depois do registro: editor do **primeiro avatar** → segue para Explorar Mundos |
+| `/perfil`      | conta + **vários avatares** (criar, editar, ativar, remover)                   |
+| `/corner`      | **Loomier's Corner**: publicar/editar seus mundos (**exige login**)            |
+| `/download`    | cliente Loomia (.AppImage) e instruções do `loomia://`                         |
+
+**Regra de acesso:** entrar em um mundo e abrir a Loomier's Corner exigem
+login; a landing e a lista pública servem de vitrine.
 
 ## Como o “Jogar” funciona
 
@@ -50,32 +65,66 @@ O jogo **não abre porta própria**: o controlador mantém uma ponte UDP local
 (`127.0.0.1:7788`) e o engine fala com ela — fechando o cliente, a conexão cai.
 
 ## Rodando em desenvolvimento
-
-Pré-requisitos: Node.js 20+, Go 1.22+, Python 3 com Tk (só para a janela) e,
-para o jogo, o LoomiaEngine (veja `loomia-engine/README.md`).
+Pré-requisitos: **PostgreSQL 14+**, Node.js 20+, Go 1.22+, Python 3 com Tk (só
+para a janela) e, para o jogo, o LoomiaEngine (`loomia-engine/README.md`).
 
 ```bash
-cd loomia-frontend && npm install && npm run build   # site
-cd loomia-masterserver && npm start                  # master em :8080
-loomia-client-lovr/appimage/build.sh                 # dist/Loomia-x86_64.AppImage
+# 1. banco (uma vez; pede a senha do sudo). Cria o usuário e o banco 'loomia'.
+cd loomia-masterserver && npm run db:setup
+#    ...ou, se preferir manualmente:
+#    sudo -u postgres createuser --login --pwprompt loomia
+#    sudo -u postgres createdb --owner=loomia loomia
+# 2. backend: instala, compila e sobe (aplica migrations + seed no boot)
+npm install && npm run build
+npm start    # usa postgresql://loomia:loomia@127.0.0.1:5432/loomia por padrão
+# 3. site (o master também serve o dist/)
+cd ../loomia-frontend && npm install && npm run build
+# 4. cliente (opcional)
+../loomia-client-lovr/appimage/build.sh
 ```
 
-Para testar sem o engine: `./appimage/build.sh --no-engine` (janela e bandeja
-funcionam; o jogo avisa que o engine não foi encontrado).
+**"password authentication failed for user \"loomia\"** significa que o
+usuário/banco ainda não existem (ou a senha do `DATABASE_URL` é outra). Rode
+`npm run db:setup` (ou o par de comandos acima) e use a **mesma** senha no
+`DATABASE_URL`:
+
+```bash
+DATABASE_URL=postgresql://loomia:SUA_SENHA@127.0.0.1:5432/loomia npm start
+```
+
+Scripts do backend: `npm run db:setup`, `npm run dev` (tsx, recarrega),
+`npm run db:migrate`, `npm run seed`, `npm test` (integração com PostgreSQL
+real).
+
+Para testar o cliente sem o engine: `./appimage/build.sh --no-engine` (janela
+e bandeja funcionam; o jogo avisa que o engine não foi encontrado).
 
 ## Variáveis de ambiente (master)
 
-| Variável                         | Padrão                                    | Descrição                              |
-|----------------------------------|-------------------------------------------|----------------------------------------|
-| `LOOMIA_PORT` / `LOOMIA_HOST`    | `8080` / `127.0.0.1`                      | HTTP do master/site                    |
-| `LOOMIA_BIND`                    | `127.0.0.1`                                | interface de escuta do HTTP            |
-| `LOOMIA_DATA_DIR`                | `../data`                                  | banco e mapas                          |
-| `LOOMIA_GAMESERVER_BIN`          | `../loomia-gameserver/loomia-gameserver`   | binário da sala (sem ele usa `go run`) |
-| `LOOMIA_GAMESERVER_PUBLIC_HOST`  | `127.0.0.1`                                | host que o cliente recebe no link      |
-| `LOOMIA_GAMESERVER_PORT_MIN/MAX` | `7800` / `7899`                            | faixa de portas das salas              |
-| `LOOMIA_ROOM_SECRET`             | `loomia-dev-secret`                        | autentica a sala nos endpoints internos|
-| `LOOMIA_TCP`                     | desligado                                  | modo TCP da sala (só diagnóstico/testes)|
-| `LOOMIA_CLIENT_BIN`              | `loomia-client`                            | lançador do cliente (scripts/docs)     |
+| Variável                         | Padrão                                          | Descrição                              |
+|----------------------------------|-------------------------------------------------|----------------------------------------|
+| `DATABASE_URL`                   | `postgresql://loomia:loomia@127.0.0.1:5432/loomia` | conexão do PostgreSQL                  |
+| `LOOMIA_DATABASE_SSL`            | desligado                                       | TLS no banco (produção)                |
+| `LOOMIA_PORT` / `LOOMIA_HOST`    | `8080` / `127.0.0.1`                            | HTTP do master/site                    |
+| `LOOMIA_BIND`                    | `127.0.0.1`                                     | interface de escuta do HTTP            |
+| `LOOMIA_WORLDS_DIR`              | `data/worlds`                                   | arquivos `.loom`                       |
+| `LOOMIA_FRONTEND_DIR`            | `loomia-frontend/dist`                          | site compilado                         |
+| `LOOMIA_GAMESERVER_BIN`          | `../loomia-gameserver/loomia-gameserver`        | binário da sala (sem ele usa `go run`) |
+| `LOOMIA_GAMESERVER_PUBLIC_HOST`  | `127.0.0.1`                                     | host que o cliente recebe no link      |
+| `LOOMIA_GAMESERVER_PORT_MIN/MAX` | `7800` / `7899`                                 | faixa de portas das salas              |
+| `LOOMIA_ROOM_SECRET`             | `loomia-dev-secret`                             | autentica a sala nos endpoints internos|
+| `LOOMIA_TCP`                     | desligado                                       | modo TCP da sala (só diagnóstico/testes)|
+| `LOOMIA_CLIENT_BIN`              | `loomia-client`                                 | lançador do cliente (scripts/docs)     |
+
+## Segurança
+* Senhas: **scrypt** (N=2^15, r=8, p=1) com salt aleatório e comparação em tempo
+  constante (`src/auth/password.ts`). Nunca são devolvidas pela API.
+* Sessões: token aleatório em cookie **HttpOnly** (SameSite=Lax); o banco guarda
+  só o SHA-256 do token, com validade de 30 dias e logout que revoga.
+* Login inválido responde sempre ``email/apelido ou senha inválidos`` e compara
+  contra um hash falso quando a conta não existe (não vaza quais emails existem).
+* Rate limit por IP em registro, login e lançamento de sala.
+* 2FA: previsto para depois (a tabela de usuários já tem espaço para o segredo).
 
 ## Protocolo
 

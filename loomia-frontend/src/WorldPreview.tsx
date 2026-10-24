@@ -1,5 +1,5 @@
 import { useEffect, useRef } from 'react'
-import type { Block, WorldMap } from './api'
+import type { Block, WorldMap } from './lib/api'
 
 /**
  * Prévia 3D do mundo no site (canvas 2D com projeção isométrica).

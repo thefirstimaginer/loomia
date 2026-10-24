@@ -1,0 +1,1 @@
+  assert.equal((await call('POST', '/api/launch', { body: { mapId: 'testflat' })).status, 401),

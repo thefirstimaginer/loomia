@@ -16,5 +16,6 @@ Ruzit
 # Master server: banco/dados locais e handler gerado
 /loomia-masterserver/node_modules
 /loomia-masterserver/data/
+/loomia-masterserver/dist/
 /loomia-masterserver/public/download/
 /data
