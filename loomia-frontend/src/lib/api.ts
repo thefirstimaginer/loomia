@@ -18,10 +18,79 @@ export interface User {
   id: string
   firstName: string
   lastName: string
-  nickname: string
+  nickname: string | null
   email: string
+  bio: string
+  role: string
+  status: string
   createdAt: string
   lastLoginAt: string | null
+  lastSeenAt: string | null
+}
+
+export interface PlayerSummary {
+  id: string
+  nickname: string | null
+  bio: string
+  online: boolean
+}
+
+export interface PublicProfile {
+  id: string
+  firstName: string
+  lastName: string
+  nickname: string | null
+  bio: string
+  createdAt: string
+  isMe: boolean
+  isFriend: boolean
+  hasPendingRequest: boolean
+  pendingRequestFromMe: boolean
+  isFavorite: boolean
+  mapsCount: number
+  maps: MapInfo[]
+  avatars: Avatar[]
+  friends: number
+  favorites: number
+}
+
+export interface FriendRequest {
+  id: string
+  fromId: string
+  fromName: string
+  toId: string
+  toName: string
+  message: string
+  status: 'pending' | 'accepted' | 'declined' | 'cancelled'
+  direction: 'incoming' | 'outgoing'
+  createdAt: string
+}
+
+export interface Friend {
+  id: string
+  nickname: string | null
+  bio: string
+}
+
+export interface ChatMessage {
+  id: string
+  fromId: string
+  toId: string
+  body: string
+  createdAt: string
+  read: boolean
+}
+
+export interface Ticket {
+  id: string
+  authorId: string | null
+  authorName: string
+  category: string
+  subject: string
+  body: string
+  status: 'open' | 'reviewing' | 'resolved' | 'closed'
+  resolution: string
+  createdAt: string
 }
 
 export interface SessionInfo {
@@ -176,6 +245,55 @@ export const api = {
     request<{ name: string; platform: string; format: string; registered: boolean; protocol: string }>(
       '/api/client/info',
     ),
+
+  // ---------------------------------------------------------------- social
+  player: (id: string) => request<PublicProfile>(`/api/players/${id}`),
+
+  searchPlayers: (term: string) => request<{ players: PlayerSummary[] }>(`/api/players?q=${encodeURIComponent(term)}`),
+
+  setBio: (bio: string) => request<{ ok: true }>('/api/me/bio', { method: 'PUT', body: JSON.stringify({ bio }) }),
+
+  report: (input: { targetId: string; description: string; mapId?: string }) =>
+    request<{ report: unknown }>('/api/reports', { method: 'POST', body: JSON.stringify(input) }),
+
+  favorite: (id: string) => request<{ favorite: boolean }>(`/api/players/${id}/favorite`, { method: 'POST' }),
+
+  unfavorite: (id: string) => request<{ favorite: boolean }>(`/api/players/${id}/favorite`, { method: 'DELETE' }),
+
+  favorites: () => request<{ favorites: PlayerSummary[] }>('/api/me/favorites'),
+
+  friends: () => request<{ friends: Friend[]; requests: FriendRequest[] }>('/api/me/friends'),
+
+  sendFriendRequest: (targetId: string, message: string) =>
+    request<{ request: FriendRequest }>('/api/friends/requests', {
+      method: 'POST',
+      body: JSON.stringify({ targetId, message }),
+    }),
+
+  acceptFriend: (id: string) =>
+    request<{ request: FriendRequest }>(`/api/friends/requests/${id}/accept`, { method: 'POST' }),
+
+  declineFriend: (id: string) =>
+    request<{ request: FriendRequest }>(`/api/friends/requests/${id}/decline`, { method: 'POST' }),
+
+  cancelFriend: (id: string) =>
+    request<{ request: FriendRequest }>(`/api/friends/requests/${id}`, { method: 'DELETE' }),
+
+  messages: (otherId: string) =>
+    request<{ messages: ChatMessage[]; unread: number }>(`/api/messages/${otherId}`),
+
+  sendMessage: (otherId: string, body: string) =>
+    request<{ message: ChatMessage }>(`/api/messages/${otherId}`, {
+      method: 'POST',
+      body: JSON.stringify({ body }),
+    }),
+
+  unread: () => request<{ unread: number }>('/api/me/unread'),
+
+  myTickets: () => request<{ tickets: Ticket[] }>('/api/me/tickets'),
+
+  createTicket: (input: { category: string; subject: string; body: string }) =>
+    request<{ ticket: Ticket }>('/api/tickets', { method: 'POST', body: JSON.stringify(input) }),
 
   status: () =>
     request<{ players_online: number; rooms: { map_id: string; map_name: string; players: number }[] }>('/api/status'),

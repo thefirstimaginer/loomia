@@ -25,6 +25,7 @@ Jogo online de mundos em blocos, inspirado no Roblox clássico de 2008.
 | `loomia-gameserver`   | Go                     | sala: física, colisão, snapshots UDP a 30 Hz                 |
 | `loomia-engine`       | C / Lua (fork LOVR)    | **LoomiaEngine**: engine do jogo + módulo `udp`              |
 | `loomia-client-lovr`  | Lua + Python           | o jogo, o controlador e o build do **AppImage**              |
+| `loomia-admin`        | React + Vite           | painel de administração (separado; servido em `/admin`)      |
 | `docs/protocolo.md`   | —                      | protocolo único (cliente ↔ sala) e constantes de física      |
 | `data/`               | JSON                   | mapas (`worlds/*.loom`) — o catálogo vive no PostgreSQL      |
 
@@ -39,9 +40,32 @@ Jogo online de mundos em blocos, inspirado no Roblox clássico de 2008.
 | `/perfil`      | conta + **vários avatares** (criar, editar, ativar, remover)                   |
 | `/corner`      | **Loomier's Corner**: publicar/editar seus mundos (**exige login**)            |
 | `/download`    | cliente Loomia (.AppImage) e instruções do `loomia://`                         |
+| `/jogadores/:id` | perfil público: avatar, bio, mundos, **favoritar**, **pedido de amizade com mensagem** e **reportar** |
+| `/amigos`      | pedidos recebidos (com a mensagem), enviados, lista de amigos, favoritos e busca de jogadores |
+| `/tickets`     | suporte: abrir chamado (cliente, conta, jogo, sugestão) e acompanhar respostas |
 
 **Regra de acesso:** entrar em um mundo e abrir a Loomier's Corner exigem
 login; a landing e a lista pública servem de vitrine.
+
+### Painel de administração (`loomia-admin`)
+
+Frontend **separado**, servido pelo master em **`/admin`** (dev: `cd loomia-admin && npm run dev`,
+porta 5174). Tema escuro próprio, noindex.
+
+| Aba | Conteúdo |
+|-----|----------|
+| **Dashboard** | 4 gráficos de rosca: (1) jogadores online × offline, (2) cadastros (24h × anteriores), (3) moderação (ativas × banidas × excluídas), (4) mapas (públicos × privados) — mais KPIs e últimos eventos |
+| **Jogadores** | busca por apelido/email/nome; ficha com **nome, email, bio, data de criação e quantos mapas enviou**; botões **Excluir conta** e **Banir** (com motivo) / Desbanir |
+| **Reports** | quem reportou, quem foi reportado e a descrição; muda status e registra a resolução |
+| **Tickets** | mensagens da comunidade por categoria; responde e fecha |
+
+**Regras de moderação**
+
+* **Excluir conta** apaga o usuário, mas libera email **e** apelido para um novo cadastro.
+* **Banir** bloqueia o login, derruba as sessões, **queima o email para sempre** (tabela
+  `bans`, checada no registro) e **libera o apelido** (o nome volta a poder ser usado).
+* Quem vira admin: os emails de `LOOMIA_ADMIN_EMAILS` são promovidos automaticamente
+  no cadastro/login. A API `/api/admin/*` exige `role = admin` e valida a origem.
 
 ## Como o “Jogar” funciona
 
@@ -115,6 +139,9 @@ e bandeja funcionam; o jogo avisa que o engine não foi encontrado).
 | `LOOMIA_ROOM_SECRET`             | `loomia-dev-secret`                             | autentica a sala nos endpoints internos|
 | `LOOMIA_TCP`                     | desligado                                       | modo TCP da sala (só diagnóstico/testes)|
 | `LOOMIA_CLIENT_BIN`              | `loomia-client`                                 | lançador do cliente (scripts/docs)     |
+| `LOOMIA_ADMIN_EMAILS`            | vazio                                           | emails (vírgula) que recebem papel de admin |
+| `LOOMIA_ADMIN_ORIGINS`           | próprio master + `:5174`                        | origens extras aceitas pelo painel     |
+| `LOOMIA_LIMIT_REGISTER/LOGIN`    | `10` / `20` por minuto                          | limite de tentativas por IP            |
 
 ## Segurança
 * Senhas: **scrypt** (N=2^15, r=8, p=1) com salt aleatório e comparação em tempo

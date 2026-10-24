@@ -25,6 +25,8 @@ sudo -u postgres psql -v ON_ERROR_STOP=1 \
 SELECT format('CREATE ROLE %I LOGIN PASSWORD %L', :'db_user', :'db_pass')
 WHERE NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = :'db_user')\gexec
 SELECT format('ALTER ROLE %I LOGIN PASSWORD %L', :'db_user', :'db_pass')\gexec
+-- CREATEDB: os testes de integração criam um banco temporário próprio.
+SELECT format('ALTER ROLE %I CREATEDB', :'db_user')\gexec
 SELECT format('CREATE DATABASE %I OWNER %I', :'db_name', :'db_user')
 WHERE NOT EXISTS (SELECT 1 FROM pg_database WHERE datname = :'db_name')\gexec
 SQL

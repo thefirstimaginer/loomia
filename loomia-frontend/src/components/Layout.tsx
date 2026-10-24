@@ -20,6 +20,16 @@ export function SiteHeader() {
         <Link to="/corner" className={route.name === 'corner' ? 'active' : ''}>
           Loomier&apos;s Corner
         </Link>
+        {user && (
+          <Link to="/amigos" className={route.name === 'friends' ? 'active' : ''}>
+            Amigos
+          </Link>
+        )}
+        {user && (
+          <Link to="/tickets" className={route.name === 'tickets' ? 'active' : ''}>
+            Suporte
+          </Link>
+        )}
         <Link to="/download" className={route.name === 'download' ? 'active' : ''}>
           Download
         </Link>

@@ -7,8 +7,12 @@ export interface RawUserRow {
   id: string
   first_name: string
   last_name: string
-  nickname: string
+  nickname: string | null
   email: string
+  bio: string
+  role: string
+  status: string
+  last_seen_at: Date | null
   password_hash: string
   created_at: Date
   last_login_at: Date | null
@@ -18,10 +22,14 @@ export interface PublicUser {
   id: string
   firstName: string
   lastName: string
-  nickname: string
+  nickname: string | null
   email: string
+  bio: string
+  role: string
+  status: string
   createdAt: string
   lastLoginAt: string | null
+  lastSeenAt: string | null
 }
 
 export function toPublicUser(row: RawUserRow): PublicUser {
@@ -31,8 +39,12 @@ export function toPublicUser(row: RawUserRow): PublicUser {
     lastName: row.last_name,
     nickname: row.nickname,
     email: row.email,
+    bio: row.bio ?? '',
+    role: row.role ?? 'player',
+    status: row.status ?? 'active',
     createdAt: row.created_at.toISOString(),
     lastLoginAt: row.last_login_at ? row.last_login_at.toISOString() : null,
+    lastSeenAt: row.last_seen_at ? row.last_seen_at.toISOString() : null,
   }
 }
 
@@ -141,14 +153,14 @@ export function toAvatar(row: AvatarRow): Avatar {
 
 export async function listAvatars(userId: string): Promise<Avatar[]> {
   const rows = await query<AvatarRow>(
-    'SELECT * FROM avatars WHERE user_id = $1 ORDER BY is_active DESC, created_at ASC',
+    'SELECT * FROM avatars WHERE user_id = $1::bigint ORDER BY is_active DESC, created_at ASC',
     [userId],
   )
   return rows.rows.map(toAvatar)
 }
 
 export async function countAvatars(userId: string): Promise<number> {
-  const row = await one<{ count: string }>('SELECT count(*)::text AS count FROM avatars WHERE user_id = $1', [userId])
+  const row = await one<{ count: string }>('SELECT count(*)::text AS count FROM avatars WHERE user_id = $1::bigint', [userId])
   return Number(row?.count ?? 0)
 }
 
@@ -165,13 +177,13 @@ const MAX_AVATARS = 12
 
 export async function createAvatar(userId: string, input: AvatarInput): Promise<Avatar> {
   return transaction(async (client) => {
-    const count = await client.query<{ count: string }>('SELECT count(*)::text AS count FROM avatars WHERE user_id = $1', [userId])
+    const count = await client.query<{ count: string }>('SELECT count(*)::text AS count FROM avatars WHERE user_id = $1::bigint', [userId])
     if (Number(count.rows[0]?.count ?? 0) >= MAX_AVATARS) {
       throw new HttpError(409, `limite de ${MAX_AVATARS} avatares por conta atingido`, 'avatar_limit')
     }
     // Se o usuário marcar como ativo, desativa o anterior.
     if (input.isActive !== false) {
-      await client.query('UPDATE avatars SET is_active = false WHERE user_id = $1', [userId])
+      await client.query('UPDATE avatars SET is_active = false WHERE user_id = $1::bigint', [userId])
     }
     const inserted = await client.query<AvatarRow>(
       `INSERT INTO avatars (user_id, name, body_color, shirt_color, pants_color, hat, is_active)
@@ -186,13 +198,13 @@ export async function createAvatar(userId: string, input: AvatarInput): Promise<
 export async function updateAvatar(userId: string, avatarId: string, input: AvatarInput): Promise<Avatar | null> {
   return transaction(async (client) => {
     if (input.isActive) {
-      await client.query('UPDATE avatars SET is_active = false WHERE user_id = $1', [userId])
+      await client.query('UPDATE avatars SET is_active = false WHERE user_id = $1::bigint', [userId])
     }
     const updated = await client.query<AvatarRow>(
       `UPDATE avatars
           SET name = $3, body_color = $4, shirt_color = $5, pants_color = $6, hat = $7,
               is_active = $8, updated_at = now()
-        WHERE id = $2 AND user_id = $1
+        WHERE id = $2 AND user_id = $1::bigint
         RETURNING *`,
       [userId, avatarId, input.name, input.bodyColor, input.shirtColor, input.pantsColor, input.hat, Boolean(input.isActive)],
     )
@@ -202,9 +214,9 @@ export async function updateAvatar(userId: string, avatarId: string, input: Avat
 
 export async function activateAvatar(userId: string, avatarId: string): Promise<Avatar | null> {
   return transaction(async (client) => {
-    const found = await client.query('SELECT id FROM avatars WHERE id = $1 AND user_id = $2', [avatarId, userId])
+    const found = await client.query('SELECT id FROM avatars WHERE id = $1 AND user_id = $2::bigint', [avatarId, userId])
     if (found.rowCount === 0) return null
-    await client.query('UPDATE avatars SET is_active = false WHERE user_id = $1', [userId])
+    await client.query('UPDATE avatars SET is_active = false WHERE user_id = $1::bigint', [userId])
     const updated = await client.query<AvatarRow>(
       'UPDATE avatars SET is_active = true, updated_at = now() WHERE id = $1 RETURNING *',
       [avatarId],
@@ -216,7 +228,7 @@ export async function activateAvatar(userId: string, avatarId: string): Promise<
 export async function deleteAvatar(userId: string, avatarId: string): Promise<boolean> {
   return transaction(async (client) => {
     const removed = await client.query<{ was_active: boolean }>(
-      'DELETE FROM avatars WHERE id = $1 AND user_id = $2 RETURNING is_active AS was_active',
+      'DELETE FROM avatars WHERE id = $1 AND user_id = $2::bigint RETURNING is_active AS was_active',
       [avatarId, userId],
     )
     if (removed.rowCount === 0) return false
@@ -224,7 +236,7 @@ export async function deleteAvatar(userId: string, avatarId: string): Promise<bo
       // Promove o mais antigo a ativo, para o jogador nunca ficar sem avatar.
       await client.query(
         `UPDATE avatars SET is_active = true
-          WHERE id = (SELECT id FROM avatars WHERE user_id = $1 ORDER BY created_at ASC LIMIT 1)`,
+          WHERE id = (SELECT id FROM avatars WHERE user_id = $1::bigint ORDER BY created_at ASC LIMIT 1)`,
         [userId],
       )
     }

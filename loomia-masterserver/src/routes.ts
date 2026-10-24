@@ -36,6 +36,10 @@ import { DUMMY_HASH, hashPassword, verifyPassword } from './auth/password.js'
 import { SESSION_COOKIE, createSession, deleteSession, requireUser, userForToken, type SessionUser } from './auth/session.js'
 import { HttpError, Router, clientIp, readBody, sendJson, serializeCookie, type RequestContext } from './http.js'
 import { inspectProtocolHandler, launchArguments } from './protocol.js'
+import { isEmailBanned, recordEvent } from './db/moderation.js'
+import { createAdminApi } from './routes.admin.js'
+import { createSocialApi } from './routes.social.js'
+import { config as appConfig } from './config.js'
 import { RoomManager, launchUrl } from './rooms.js'
 import { RateLimiter, type Logger } from './util.js'
 import { parseAvatar, parseLogin, parseMapId, parseMapPublish, parseRegister } from './validate.js'
@@ -112,12 +116,33 @@ export function createApi(deps: ApiDeps): Router {
   // ------------------------------------------------------------------ contas
 
   router.post(/^\/api\/auth\/register$/, async (ctx) => {
-    const wait = limiter.take(`register:${ctx.ip}`, 10, 60_000)
+    const wait = limiter.take(`register:${ctx.ip}`, config.limitRegister, 60_000)
     if (wait > 0) throw new HttpError(429, `muitas tentativas, tente em ${wait}s`, 'rate_limited')
 
     const input = parseRegister(await ctx.body())
+
+    // Email banido não pode criar conta nova — nem contar como apelido usado.
+    const banned = await isEmailBanned(input.email)
+    if (banned.banned) {
+      throw new HttpError(403, 'esse email está bloqueado no Loomia', 'email_banned')
+    }
+
+    // Apelido: checagem explícita para dar erro claro mesmo quando o email
+    // pertence a uma conta banida (o apelido dela já foi liberado).
+    if (await findUserByLogin(input.nickname)) {
+      throw new HttpError(409, 'esse apelido já está em uso', 'nickname_taken')
+    }
+
     const passwordHash = await hashPassword(input.password)
     const user = await createUser({ ...input, passwordHash })
+
+    // Promoção a admin por lista de emails confiável (LOOMIA_ADMIN_EMAILS).
+    if (appConfig.adminEmails.includes(input.email.toLowerCase())) {
+      await query("UPDATE users SET role = 'admin' WHERE id = $1", [String(user.id)])
+      user.role = 'admin'
+    }
+    await recordEvent('registered', String(user.id))
+
     const session = await createSession(String(user.id), String(ctx.req.headers['user-agent'] ?? ''))
     setSessionCookie(ctx, session.token, 30 * 24 * 3600)
 
@@ -125,12 +150,13 @@ export function createApi(deps: ApiDeps): Router {
       user: toPublicUser(user),
       /** O site manda o jogador para o editor do primeiro avatar. */
       next: 'onboarding',
+      role: user.role,
       session: { expiresAt: session.expiresAt.toISOString() },
     })
   })
 
   router.post(/^\/api\/auth\/login$/, async (ctx) => {
-    const wait = limiter.take(`login:${ctx.ip}`, 20, 60_000)
+    const wait = limiter.take(`login:${ctx.ip}`, config.limitLogin, 60_000)
     if (wait > 0) throw new HttpError(429, `muitas tentativas, tente em ${wait}s`, 'rate_limited')
 
     const input = parseLogin(await ctx.body())
@@ -139,7 +165,12 @@ export function createApi(deps: ApiDeps): Router {
     const ok = await verifyPassword(input.password, user?.password_hash ?? DUMMY_HASH)
     if (!user || !ok) throw new HttpError(401, 'email/apelido ou senha inválidos', 'invalid_credentials')
 
+    if (user.status === 'banned' || user.status === 'removed') {
+      throw new HttpError(403, 'essa conta está bloqueada', 'account_blocked')
+    }
     await touchLogin(String(user.id))
+    await query("UPDATE users SET status = 'active' WHERE id = $1 AND status <> 'banned'", [String(user.id)])
+    await recordEvent('login', String(user.id))
     const session = await createSession(String(user.id), String(ctx.req.headers['user-agent'] ?? ''))
     setSessionCookie(ctx, session.token, 30 * 24 * 3600)
 
@@ -446,6 +477,10 @@ export function createApi(deps: ApiDeps): Router {
     await rooms.close(Number(body.session))
     sendJson(ctx.res, 200, { ok: true })
   })
+
+  // Painel de administração e recursos sociais.
+  createAdminApi(router)
+  createSocialApi(router, guard)
 
   router.get(/^\/api\/launch\/info$/, (ctx) => {
     sendJson(ctx.res, 200, {

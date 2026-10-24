@@ -76,6 +76,28 @@ export interface Config {
   clientBin: string
   serverName: string
   sessionSecret: string
+  /** Emails (separados por vírgula) que viram admin no primeiro login. */
+  adminEmails: string[]
+  /** Domínio(s) permitidos para o painel admin (CORS com credenciais). */
+  adminOrigins: string[]
+  /** Limites de tentativas por minuto (registro/login). Testes usam valores altos. */
+  limitRegister: number
+  limitLogin: number
+}
+
+/** Origens permitidas para o painel: as configuradas + o próprio master. */
+function defaultAdminOrigins(host: string, port: number): string[] {
+  const origins = new Set<string>([
+    `http://${host}:${port}`,
+    `http://127.0.0.1:${port}`,
+    `http://localhost:${port}`,
+    'http://127.0.0.1:5174',
+    'http://localhost:5174',
+  ])
+  for (const extra of (process.env.LOOMIA_ADMIN_ORIGINS ?? '').split(',')) {
+    if (extra.trim()) origins.add(extra.trim())
+  }
+  return [...origins]
 }
 
 export const config: Config = {
@@ -108,4 +130,12 @@ export const config: Config = {
   clientBin: process.env.LOOMIA_CLIENT_BIN ?? 'loomia-client',
   serverName: process.env.LOOMIA_SERVER_NAME ?? 'Loomia',
   sessionSecret: process.env.LOOMIA_SESSION_SECRET ?? '',
+
+  adminEmails: (process.env.LOOMIA_ADMIN_EMAILS ?? '')
+    .split(',')
+    .map((email) => email.trim().toLowerCase())
+    .filter(Boolean),
+  adminOrigins: defaultAdminOrigins(process.env.LOOMIA_HOST ?? '127.0.0.1', num(process.env.LOOMIA_PORT ?? process.env.PORT, 8080)),
+  limitRegister: num(process.env.LOOMIA_LIMIT_REGISTER, 10),
+  limitLogin: num(process.env.LOOMIA_LIMIT_LOGIN, 20),
 }

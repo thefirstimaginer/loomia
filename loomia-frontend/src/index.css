@@ -1160,6 +1160,15 @@ textarea {
   display: flex;
   gap: 10px;
   flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+}
+/* No perfil público os botões mantêm largura própria (sem esticar). */
+.profile-actions .launch-button,
+.profile-actions .ghost-button {
+  width: auto;
+  flex: 0 0 auto;
+  white-space: nowrap;
 }
 .card-head {
   display: flex;
@@ -1288,4 +1297,151 @@ textarea {
   .topnav {
     display: none;
   }
+}
+
+/* =========================================================================
+   Social: perfil de jogador, amigos, mensagens, reportar e suporte
+   ========================================================================= */
+
+.split-columns {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  gap: 18px;
+  align-items: start;
+}
+
+.people-list,
+.request-list,
+.ticket-list,
+.chat-list {
+  list-style: none;
+  margin: 12px 0 0;
+  padding: 0;
+  display: grid;
+  gap: 10px;
+}
+
+.people-list li,
+.request-list li,
+.ticket-list li {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 12px 14px;
+  background: #fbfaf6;
+}
+
+.request-list li,
+.ticket-list li {
+  display: grid;
+}
+
+/* Aceitar/recusar lado a lado, ocupando só o necessário. */
+.request-list .form-actions {
+  flex-wrap: nowrap;
+}
+
+.request-list .launch-button,
+.request-list .ghost-button {
+  width: auto;
+  flex: 0 0 auto;
+  white-space: nowrap;
+}
+
+.people-list .link-button {
+  flex: 0 1 auto;
+}
+
+.request-message {
+  margin: 8px 0 0;
+  padding: 8px 10px;
+  border-left: 3px solid var(--loomia);
+  background: rgba(233, 181, 43, 0.1);
+  border-radius: 6px;
+  font-size: 13.5px;
+  color: var(--ink);
+}
+
+.player-dot.online {
+  background: var(--ok);
+  box-shadow: 0 0 0 3px rgba(46, 139, 87, 0.18);
+}
+
+.avatar-placeholder {
+  width: 120px;
+  height: 150px;
+  border-radius: 14px;
+  background: linear-gradient(180deg, #dbe9f7, #f4f1e8);
+  border: 1px solid var(--line);
+}
+
+.chat-list li {
+  max-width: 84%;
+  padding: 9px 12px;
+  border-radius: 12px;
+  background: #eef2f7;
+  border: 1px solid var(--line);
+}
+
+.chat-list li.me {
+  justify-self: end;
+  background: rgba(233, 181, 43, 0.18);
+}
+
+.chat-list li.them {
+  justify-self: start;
+}
+
+.chat-list p {
+  margin: 0 0 4px;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.ticket-list header {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  align-items: center;
+}
+
+.ticket-list p {
+  margin: 8px 0;
+  font-size: 14px;
+  white-space: pre-wrap;
+}
+
+.ticket-answer {
+  border-left: 3px solid var(--ok);
+  background: rgba(46, 139, 87, 0.08);
+  border-radius: 6px;
+  padding: 8px 10px;
+}
+
+.ticket-answer span {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--ink-soft);
+  font-weight: 700;
+}
+
+.inline-form {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex-wrap: wrap;
+  margin-top: 8px;
+}
+
+.inline-form input {
+  flex: 1;
+  min-width: 180px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 9px 12px;
+  font: inherit;
 }

@@ -41,10 +41,22 @@ function ProfileContent({
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
+  const [bio, setBio] = useState(user.bio ?? '')
+  const [savingBio, setSavingBio] = useState(false)
+  const [unread, setUnread] = useState(0)
+  const [requests, setRequests] = useState(0)
   const [, navigate] = useRoute()
 
   useEffect(() => {
     api.avatarOptions().then(setOptions).catch(() => setOptions(undefined))
+    api
+      .unread()
+      .then((result) => setUnread(result.unread))
+      .catch(() => setUnread(0))
+    api
+      .friends()
+      .then((result) => setRequests(result.requests.filter((entry) => entry.direction === 'incoming' && entry.status === 'pending').length))
+      .catch(() => setRequests(0))
   }, [])
 
   const active = avatars.find((avatar) => avatar.isActive) ?? avatars[0] ?? null
@@ -197,6 +209,62 @@ function ProfileContent({
           />
         </section>
       )}
+
+      <div className="split-columns">
+        <section className="card">
+          <h2>Sobre você</h2>
+          <label className="field">
+            <span>Bio (aparece no seu perfil público)</span>
+            <textarea
+              value={bio}
+              maxLength={500}
+              placeholder="Conte um pouco sobre você e seus mundos…"
+              onChange={(event) => setBio(event.target.value)}
+              style={{ minHeight: 90 }}
+            />
+          </label>
+          <div className="form-actions">
+            <button
+              className="ghost-button"
+              disabled={savingBio || bio === (user.bio ?? '')}
+              onClick={() => {
+                setSavingBio(true)
+                api
+                  .setBio(bio.trim())
+                  .then(() => setNotice('Bio atualizada.'))
+                  .catch((problem) => setError(problem instanceof Error ? problem.message : 'Falha ao salvar a bio'))
+                  .finally(() => setSavingBio(false))
+              }}
+            >
+              {savingBio ? 'SALVANDO…' : 'SALVAR BIO'}
+            </button>
+          </div>
+        </section>
+
+        <section className="card">
+          <h2>Social</h2>
+          <ul className="people-list">
+            <li>
+              <button className="link-button" onClick={() => navigate('/amigos')}>
+                Amigos e pedidos
+              </button>
+              <small>{requests > 0 ? `${requests} pedido(s) esperando` : 'tudo em dia'}</small>
+            </li>
+            <li>
+              <button className="link-button" onClick={() => navigate('/amigos')}>
+                Mensagens não lidas
+              </button>
+              <small>{unread}</small>
+            </li>
+            <li>
+              <button className="link-button" onClick={() => navigate('/tickets')}>
+                Suporte e sugestões
+              </button>
+              <small>abrir chamado</small>
+            </li>
+          </ul>
+        </section>
+      </div>
 
       <section className="card">
         <h2>Meus mundos</h2>

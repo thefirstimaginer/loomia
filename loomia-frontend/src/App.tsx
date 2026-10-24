@@ -3,11 +3,14 @@ import { useRoute } from './lib/router'
 import { SessionProvider } from './lib/session'
 import { CornerPage } from './pages/CornerPage'
 import { DownloadPage } from './pages/DownloadPage'
+import { FriendsPage } from './pages/FriendsPage'
 import { ExplorePage } from './pages/ExplorePage'
 import { LandingPage } from './pages/LandingPage'
 import { LoginPage } from './pages/LoginPage'
+import { PlayerPage } from './pages/PlayerPage'
 import { ProfilePage } from './pages/ProfilePage'
 import { RegisterPage } from './pages/RegisterPage'
+import { TicketsPage } from './pages/TicketsPage'
 import { WelcomePage } from './pages/WelcomePage'
 
 /**
@@ -64,6 +67,12 @@ function renderPage(route: Route, navigate: Navigate) {
       return <CornerPage />
     case 'download':
       return <DownloadPage />
+    case 'player':
+      return <PlayerPage />
+    case 'friends':
+      return <FriendsPage />
+    case 'tickets':
+      return <TicketsPage />
     default:
       return (
         <main className="page">

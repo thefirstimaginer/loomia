@@ -9,6 +9,7 @@
 
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http'
 import { readFile, stat } from 'node:fs/promises'
+import { existsSync } from 'node:fs'
 import path from 'node:path'
 import { createHash } from 'node:crypto'
 
@@ -159,8 +160,45 @@ const MIME: Record<string, string> = {
   '.txt': 'text/plain; charset=utf-8',
 }
 
+/** Onde está o build do painel (loomia-admin/dist), ao lado do site. */
+function adminDir(): string {
+  return process.env.LOOMIA_ADMIN_DIR ?? path.resolve(config.frontendDir, '..', '..', 'loomia-admin', 'dist')
+}
+
+/** Serve um SPA de uma pasta qualquer (usado pelo painel admin). */
+async function serveFrom(res: ServerResponse, root: string, pathname: string, hint: string): Promise<void> {
+  let file: string
+  if (pathname.startsWith('/assets/') || /\.[a-z0-9]+$/i.test(pathname)) {
+    // Arquivo com hash/extensão: 404 de verdade se não existir.
+    file = path.join(root, decodeURIComponent(pathname).replace(/^\/+/, ''))
+    if (!file.startsWith(root)) {
+      res.writeHead(403).end('caminho inválido')
+      return
+    }
+  } else {
+    // Rota da SPA: cai no index.html.
+    file = path.join(root, 'index.html')
+  }
+  try {
+    const data = await readFile(file)
+    res.writeHead(200, {
+      'content-type': MIME[path.extname(file)] ?? 'application/octet-stream',
+      'content-length': data.length,
+      'cache-control': 'no-cache',
+    })
+    res.end(data)
+  } catch {
+    res.writeHead(503, { 'content-type': 'text/plain; charset=utf-8' })
+    res.end(`O painel admin ainda não foi compilado.\n${hint}\n`)
+  }
+}
+
 async function serveStatic(res: ServerResponse, pathname: string): Promise<void> {
   const root = config.frontendDir
+  // O painel admin é um build separado (loomia-admin), servido em /admin.
+  if (pathname === '/admin' || pathname.startsWith('/admin/')) {
+    return serveFrom(res, adminDir(), pathname.slice('/admin'.length) || '/', 'Rode: cd loomia-admin && npm install && npm run build')
+  }
   const relative = pathname === '/' ? 'index.html' : decodeURIComponent(pathname).replace(/^\/+/, '')
   let file = path.join(root, relative)
   if (!file.startsWith(root)) {
@@ -268,6 +306,8 @@ server.listen(config.port, config.bind, () => {
   log.info(`site: ${config.frontendDir}`)
   log.info(`mapas: ${config.worldsDir}`)
   log.info(`banco: ${config.databaseUrl.replace(/:[^:@/]+@/, ':***@')}`)
+  const adminDir = path.resolve(config.frontendDir, '..', '..', 'loomia-admin', 'dist')
+  if (existsSync(adminDir)) log.info(`painel admin: http://${config.host}:${config.port}/admin`)
 })
 
 async function shutdown(): Promise<void> {

@@ -9,6 +9,8 @@ Ruzit
 
 # Site
 /loomia-frontend/dist
+/loomia-admin/dist
+/loomia-admin/node_modules
 /dist
 /build
 /loomia-frontend/node_modules
