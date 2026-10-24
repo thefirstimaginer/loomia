@@ -78,7 +78,7 @@ PY
 
 # --- 3. Ícone da bandeja (C/X11 puro, sem GTK) ----------------------------
 log "compilando a bandeja (loomia-tray)"
-cc -O2 -Wall -Wextra -o "$APPDIR/usr/bin/loomia-tray" "$APPIMAGE_SRC/tray/loomia-tray.c" -lX11
+cc -O2 -Wall -Wextra -o "$APPDIR/usr/bin/loomia-tray" "$APPIMAGE_SRC/tray/loomia-tray.c" -lX11 -lpthread
 
 # --- 4. Engine ------------------------------------------------------------
 if [ -z "$ENGINE_SOURCE" ] && [ "$WITH_ENGINE" = "1" ]; then

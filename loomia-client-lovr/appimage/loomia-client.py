@@ -31,6 +31,7 @@ import os
 import queue
 import re
 import shlex
+import shutil
 import socket
 import struct
 import subprocess
@@ -307,6 +308,7 @@ def signal_handle() -> None:
 @dataclass
 class ClientState:
     status: str = "Pronto"
+    detail: str = ""
     map_name: str = ""
     server: str = ""
     game_pid: int | None = None
@@ -398,28 +400,38 @@ def request_room(origin: str, map_id: str, name: str, color: str) -> dict | None
 # Jogo (engine Lua)
 # ---------------------------------------------------------------------------
 
-def engine_command(launch: dict) -> list[str] | None:
-    """Comando que abre o jogo. O engine LoomiaEngine recebe `chave=valor`."""
+def engine_command(launch: dict | None) -> list[str] | None:
+    """Comando que abre o cliente (launcher) ou entra direto em uma sala.
+
+    O engine recebe pares `chave=valor`; sem `server`, ele abre o launcher
+    (login, perfil, avatares e catálogo) — que é o caso de um clique simples no
+    AppImage.
+    """
     engine = os.environ.get("LOOMIA_ENGINE") or str(APPDIR / "usr" / "bin" / "loomiaengine")
     client_dir = os.environ.get("LOOMIA_GAME_DIR") or str(APPDIR / "usr" / "share" / "loomia" / "game")
     if not Path(engine).exists():
-        return None
-    arguments = [
-        engine, client_dir,
-        f"server={launch['server']}",
-        f"token={launch['token']}",
-        f"map={launch.get('map', '')}",
-        f"name={launch.get('name', DEFAULT_NAME)}",
-        f"color={launch.get('color', 'eabe19')}",
-        f"origin={launch.get('origin', DEFAULT_MASTER)}",
-    ]
+        # Fora do AppImage (dev): tenta o `lovr` do PATH.
+        fallback = shutil.which("lovr") or shutil.which("loomiaengine")
+        if not fallback:
+            return None
+        engine = fallback
+    arguments = [engine, client_dir, f"origin={launch.get('origin', DEFAULT_MASTER) if launch else DEFAULT_MASTER}"]
+    if launch and launch.get("server") and launch.get("token"):
+        arguments += [
+            f"server={launch['server']}",
+            f"token={launch['token']}",
+            f"map={launch.get('map', '')}",
+            f"name={launch.get('name', DEFAULT_NAME)}",
+            f"color={launch.get('color', 'eabe19')}",
+        ]
     return arguments
 
 
-def start_game(launch: dict) -> None:
+def start_game(launch: dict | None) -> None:
     command = engine_command(launch)
     if not command:
-        STATE.status = "Engine LoomiaEngine não encontrado no AppImage"
+        STATE.status = "Engine não encontrado (usr/bin/loomiaengine)"
+        STATE.detail = "Instale o engine ou abra pelo código-fonte: lovr loomia-client-lovr"
         log("engine ausente: coloque o binário em usr/bin/loomiaengine")
         return
 
@@ -840,6 +852,10 @@ def main() -> int:
     threading.Thread(target=link_queue_loop, daemon=True).start()
     if link:
         threading.Thread(target=launch_from_link, args=(link,), daemon=True).start()
+    else:
+        # Clique simples no AppImage: abre o cliente (launcher) na hora, sem
+        # esperar link. É ele que mostra login, perfil, avatares e mundos.
+        threading.Thread(target=start_game, args=(None,), daemon=True).start()
 
     def pump_commands() -> None:
         try:

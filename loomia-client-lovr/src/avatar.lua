@@ -25,10 +25,17 @@ end
 
 local function makeBox(size, color, x, y, z, parent)
   local model = lovr.graphics.newModel()
-  model:addMesh(lovr.graphics.newBox(size[1], size[2], size[3]))
-    :setMaterial(lovr.graphics.newMaterial(color))
+  -- `addMesh` devolve o NÓ (Node) do modelo; quem recebe o material é o nó.
+  -- Antes isso era encadeado e, em algumas versões do engine, o retorno era
+  -- `nil` — o avatar explodia ao ser criado e o cliente não abria o jogo.
+  local node = model:addMesh(lovr.graphics.newBox(size[1], size[2], size[3]))
+  if node and node.setMaterial then
+    node:setMaterial(lovr.graphics.newMaterial(color))
+  elseif model.setMaterial then
+    model:setMaterial(lovr.graphics.newMaterial(color))
+  end
   model:setPosition(x, y, z)
-  model:setParent(parent)
+  if parent then model:setParent(parent) end
   return model
 end
 

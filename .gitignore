@@ -21,3 +21,7 @@ Ruzit
 /loomia-masterserver/dist/
 /loomia-masterserver/public/download/
 /data
+
+# Python (controlador do AppImage)
+__pycache__/
+*.pyc

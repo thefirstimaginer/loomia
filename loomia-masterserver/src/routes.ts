@@ -87,6 +87,16 @@ export function createApi(deps: ApiDeps): Router {
 
   const guard = async (ctx: RequestContext): Promise<SessionUser> => requireUser(ctx.req, ctx.cookies)
 
+  /**
+   * O cliente nativo (engine Lua) não lê cabeçalhos de resposta, então os
+   * endpoints `/api/client/*` devolvem o token no corpo. O cookie continua
+   * sendo enviado (o site usa cookie; o cliente usa o token).
+   */
+  const clientToken = (ctx: RequestContext): string | null => {
+    const value = ctx.req.headers['x-loomia-client']
+    return typeof value === 'string' && value.length > 0 ? value : null
+  }
+
   const setSessionCookie = (ctx: RequestContext, token: string, maxAgeSeconds: number): void => {
     ctx.res.setHeader(
       'set-cookie',
@@ -179,6 +189,7 @@ export function createApi(deps: ApiDeps): Router {
       user: toPublicUser(user),
       hasAvatar: avatars.length > 0,
       avatars,
+      ...(clientToken(ctx) ? { session_token: session.token } : {}),
     })
   })
 
@@ -277,10 +288,22 @@ export function createApi(deps: ApiDeps): Router {
     const search = ctx.query.get('q') ?? ''
     const maps = await listPublicMaps(search)
     const open = new Map(rooms.list().map((room) => [room.map_id, room]))
+    // Só aparece no catálogo o mapa que realmente pode ser jogado: se o `.loom`
+    // sumiu do disco (apagado à mão, pasta trocada), o cliente quebraria ao
+    // baixar. Aqui ele fica fora e o admin vê o aviso no log.
+    const available: typeof maps = []
+    for (const map of maps) {
+      try {
+        await access(path.join(config.worldsDir, `${map.id}.loom`))
+        available.push(map)
+      } catch {
+        log.warn(`mapa "${map.id}" está no banco mas o .loom não existe em ${config.worldsDir}`)
+      }
+    }
     sendJson(
       ctx.res,
       200,
-      maps.map((map) => {
+      available.map((map) => {
         const room = open.get(map.id)
         return { ...map, online: room?.players ?? 0, room_open: Boolean(room) }
       }),
@@ -475,6 +498,67 @@ export function createApi(deps: ApiDeps): Router {
     const body = (await ctx.body()) as Record<string, unknown>
     if (body.secret !== config.roomSecret) throw new HttpError(403, 'segredo inválido', 'forbidden')
     await rooms.close(Number(body.session))
+    sendJson(ctx.res, 200, { ok: true })
+  })
+
+  // ------------------------------------------------------------------ cliente nativo
+  //
+  // O engine Lua só consegue ler o corpo da resposta (o `curl` é chamado por
+  // pipe), então login/registro do cliente devolvem o token de sessão no corpo.
+
+  const clientAuth = async (ctx: RequestContext, kind: 'login' | 'register'): Promise<void> => {
+    const wait = limiter.take(`client-${kind}:${ctx.ip}`, 30, 60_000)
+    if (wait > 0) throw new HttpError(429, `muitas tentativas, tente em ${wait}s`, 'rate_limited')
+    const body = (await ctx.body()) as Record<string, unknown>
+    const ctxProxy = ctx as RequestContext & { _clientToken?: string }
+    void ctxProxy
+
+    if (kind === 'login') {
+      const input = parseLogin(body)
+      const user = await findUserByLogin(input.login)
+      const ok = await verifyPassword(input.password, user?.password_hash ?? DUMMY_HASH)
+      if (!user || !ok) throw new HttpError(401, 'email/apelido ou senha inválidos', 'invalid_credentials')
+      if (user.status === 'banned' || user.status === 'removed') {
+        throw new HttpError(403, 'essa conta está bloqueada', 'account_blocked')
+      }
+      await touchLogin(String(user.id))
+      await recordEvent('login', String(user.id))
+      const session = await createSession(String(user.id), 'loomia-client')
+      const avatars = await listAvatars(String(user.id))
+      sendJson(ctx.res, 200, {
+        session_token: session.token,
+        user: toPublicUser(user),
+        avatars,
+        hasAvatar: avatars.length > 0,
+      })
+      return
+    }
+
+    const input = parseRegister(body)
+    if ((await isEmailBanned(input.email)).banned) {
+      throw new HttpError(403, 'esse email está bloqueado no Loomia', 'email_banned')
+    }
+    if (await findUserByLogin(input.nickname)) {
+      throw new HttpError(409, 'esse apelido já está em uso', 'nickname_taken')
+    }
+    const passwordHash = await hashPassword(input.password)
+    const user = await createUser({ ...input, passwordHash })
+    await recordEvent('registered', String(user.id))
+    const session = await createSession(String(user.id), 'loomia-client')
+    sendJson(ctx.res, 201, {
+      session_token: session.token,
+      user: toPublicUser(user),
+      avatars: [],
+      hasAvatar: false,
+    })
+  }
+
+  router.post(/^\/api\/client\/login$/, (ctx) => clientAuth(ctx, 'login'))
+  router.post(/^\/api\/client\/register$/, (ctx) => clientAuth(ctx, 'register'))
+
+  router.post(/^\/api\/client\/logout$/, async (ctx) => {
+    const token = ctx.cookies.get(SESSION_COOKIE)
+    if (token) await deleteSession(token)
     sendJson(ctx.res, 200, { ok: true })
   })
 

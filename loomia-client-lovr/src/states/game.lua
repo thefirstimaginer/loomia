@@ -277,8 +277,24 @@ function game:keypressed(key)
   elseif key == 'f1' then
     self.hud.showDebug = not self.hud.showDebug
   elseif key == 'escape' then
-    lovr.event.quit()
+    -- Volta para o launcher (e não fecha o cliente inteiro).
+    self:leave()
   end
+end
+--- Encerra a sessão e volta para o launcher do cliente.
+function game:leave()
+  if self.net then
+    pcall(function() self.net:close() end)
+    self.net = nil
+  end
+  -- Solta os avatares remotos para a próxima sala começar limpa.
+  self.avatars = {}
+  self.remote = {}
+  self.previous = {}
+  self.speeds = {}
+  self.pending = {}
+  self.app.state = 'launcher'
+  if self.app.launcher then self.app.launcher:enter() end
 end
 
 function game:keyreleased(key)

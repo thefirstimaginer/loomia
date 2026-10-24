@@ -27,8 +27,9 @@ function hud.new()
   return self
 end
 
-function hud:load()
-  if not self.font then self.font = lovr.graphics.getDefaultFont() end
+-- Função de módulo (chamada como `hud.load()`, sem instância).
+function hud.load()
+  hud.sharedFont = lovr.graphics.getDefaultFont()
 end
 
 function hud:addChat(from, text)
