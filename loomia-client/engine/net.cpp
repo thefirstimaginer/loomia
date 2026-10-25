@@ -234,7 +234,7 @@ GameChannel::~GameChannel() { close(); }
 
 bool GameChannel::connect(const std::string& host, int port, const std::string& token,
                           const std::string& name, const std::string& appearanceJson,
-                          std::string& error) {
+                          std::string& error, const std::string& sessionToken) {
   close();
   host_ = host;
   port_ = port;
@@ -288,6 +288,7 @@ bool GameChannel::connect(const std::string& host, int port, const std::string& 
   auto hello = json::makeObject();
   json::set(*hello, "t", json::makeString("hello"));
   json::set(*hello, "token", json::makeString(token));
+  if (!sessionToken.empty()) json::set(*hello, "session", json::makeString(sessionToken));
   json::set(*hello, "name", json::makeString(name));
   const json::ValuePtr look = json::parse(appearance);
   json::set(*hello, "appearance", look ? look : json::makeObject());

@@ -201,6 +201,7 @@ bool WorldRenderer::init(std::string& error) {
   // ---- cubo unitário (avatares/itens) ----------------------------------
   glGenVertexArrays(1, &boxVao_);
   glGenBuffers(1, &boxVbo_);
+  glGenBuffers(1, &boxIbo_);
   std::vector<Vertex> boxVertices;
   std::vector<uint32_t> boxIndices;
   const Vec3 h{0.5f, 0.5f, 0.5f};
@@ -222,11 +223,16 @@ bool WorldRenderer::init(std::string& error) {
   glBindBuffer(GL_ARRAY_BUFFER, boxVbo_);
   glBufferData(GL_ARRAY_BUFFER, static_cast<GLsizeiptr>(boxVertices.size() * sizeof(Vertex)),
                boxVertices.data(), GL_STATIC_DRAW);
+  glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, boxIbo_);
+  glBufferData(GL_ELEMENT_ARRAY_BUFFER,
+               static_cast<GLsizeiptr>(boxIndices.size() * sizeof(uint32_t)), boxIndices.data(),
+               GL_STATIC_DRAW);
   glEnableVertexAttribArray(0);
   glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, sizeof(Vertex), reinterpret_cast<void*>(offsetof(Vertex, x)));
   glEnableVertexAttribArray(1);
   glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, sizeof(Vertex), reinterpret_cast<void*>(offsetof(Vertex, nx)));
   glBindVertexArray(0);
+  boxIndexCount_ = boxIndices.size();
 
   ready_ = true;
   return true;
@@ -234,11 +240,12 @@ bool WorldRenderer::init(std::string& error) {
 
 void WorldRenderer::destroy() {
   if (worldIbo_) glDeleteBuffers(1, &worldIbo_);
+  if (boxIbo_) glDeleteBuffers(1, &boxIbo_);
   if (worldVbo_) glDeleteBuffers(1, &worldVbo_);
   if (boxVbo_) glDeleteBuffers(1, &boxVbo_);
   if (worldVao_) glDeleteVertexArrays(1, &worldVao_);
   if (boxVao_) glDeleteVertexArrays(1, &boxVao_);
-  worldIbo_ = worldVbo_ = worldVao_ = boxVbo_ = boxVao_ = 0;
+  worldIbo_ = worldVbo_ = worldVao_ = boxVbo_ = boxVao_ = boxIbo_ = 0;
   ready_ = false;
 }
 
@@ -293,6 +300,7 @@ void WorldRenderer::upload(const World& world) {
 
   indexCount_ = indices.size();
   triangles_ = indices.size() / 3;
+  vertexCount_ = vertices.size();
 }
 
 void WorldRenderer::draw(const Camera& camera, float aspect, const Vec3& lightDir) {
@@ -317,7 +325,7 @@ void WorldRenderer::drawBox(const Camera& camera, float aspect, const Mat4& tran
   glUniform3f(boxShader_.uniform("uColor"), color.rf(), color.gf(), color.bf());
   glUniform1f(boxShader_.uniform("uEmissive"), emissive ? 0.75f : 0.0f);
   glBindVertexArray(boxVao_);
-  glDrawArrays(GL_TRIANGLES, 0, 36);
+  glDrawElements(GL_TRIANGLES, static_cast<GLsizei>(boxIndexCount_), GL_UNSIGNED_INT, nullptr);
   glBindVertexArray(0);
 }
 

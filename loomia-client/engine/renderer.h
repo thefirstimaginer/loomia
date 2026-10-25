@@ -63,6 +63,7 @@ class WorldRenderer {
                bool emissive = false);
 
   size_t triangleCount() const { return triangles_; }
+  size_t vertexCount() const { return vertexCount_; }
 
  private:
   ShaderProgram worldShader_;
@@ -72,8 +73,11 @@ class WorldRenderer {
   unsigned int worldIbo_ = 0;
   unsigned int boxVao_ = 0;
   unsigned int boxVbo_ = 0;
+  unsigned int boxIbo_ = 0;
   size_t triangles_ = 0;
   size_t indexCount_ = 0;
+  size_t boxIndexCount_ = 0;
+  size_t vertexCount_ = 0;
   bool ready_ = false;
 };
 

@@ -38,6 +38,7 @@ import (
 type Msg struct {
 	T          string          `json:"t"`
 	Token      string          `json:"token,omitempty"`
+	Session    string          `json:"session,omitempty"`
 	Name       string          `json:"name,omitempty"`
 	Appearance json.RawMessage `json:"appearance,omitempty"`
 	Seq        uint32          `json:"seq,omitempty"`

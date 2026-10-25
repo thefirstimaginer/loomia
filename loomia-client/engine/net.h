@@ -87,7 +87,8 @@ class GameChannel {
 
   /** Abre o socket UDP e envia `hello`. Devolve false + erro se não abrir. */
   bool connect(const std::string& host, int port, const std::string& token, const std::string& name,
-               const std::string& appearanceJson, std::string& error);
+               const std::string& appearanceJson, std::string& error,
+               const std::string& sessionToken = "");
 
   void close();
   bool isOpen() const { return socket_ >= 0; }

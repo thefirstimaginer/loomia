@@ -11,16 +11,19 @@ namespace loomia {
 namespace {
 
 // Paleta do site do Loomia (mesma identidade visual).
-const sf::Color kBackground(14, 21, 35);
-const sf::Color kPanel(22, 30, 48);
-const sf::Color kPanelSoft(28, 38, 61);
-const sf::Color kLine(46, 61, 89);
-const sf::Color kText(232, 238, 251);
-const sf::Color kMuted(143, 160, 189);
-const sf::Color kAccent(74, 168, 255);
-const sf::Color kOk(61, 220, 151);
-const sf::Color kDanger(255, 92, 92);
-const sf::Color kGold(234, 190, 25);
+// Paleta do site do Loomia (identidade visual do frontend, não do admin):
+// papel claro #f7f4ec, tinta #16202c, amarelo Loomia #e9b52b, bordas grossas.
+const sf::Color kBackground(247, 244, 236);   // --paper
+const sf::Color kPanel(255, 255, 255);        // --panel
+const sf::Color kPanelSoft(255, 253, 247);    // campos (#fffdf7)
+const sf::Color kLine(22, 32, 44);            // --ink (bordas)
+const sf::Color kText(22, 32, 44);            // --ink
+const sf::Color kMuted(76, 91, 108);          // --ink-soft
+const sf::Color kAccent(233, 181, 43);        // --loomia
+const sf::Color kAccentDark(200, 147, 26);    // --loomia-dark
+const sf::Color kOk(46, 139, 87);             // --ok
+const sf::Color kDanger(192, 57, 43);         // --danger
+const sf::Color kGold(233, 181, 43);          // --loomia
 
 const std::vector<Color3> kBodyColors = {{234, 190, 25}, {224, 175, 140}, {140, 90, 60},
                                          {245, 210, 170}, {120, 200, 140}, {190, 190, 200}};
@@ -109,8 +112,26 @@ void Launcher::queueLaunch(const LaunchInfo& launch) {
 bool Launcher::hasPendingLaunch(LaunchInfo& launch) {
   if (pendingLaunches_.empty()) return false;
   launch = pendingLaunches_.front();
-  pendingLaunches_.erase(pendingLaunches_.begin());
   return true;
+}
+
+void Launcher::requireLogin(const std::string& message) {
+  // A build default não entra no mapa sem login: mostra a aba Conta com a
+  // mensagem. O launch continua na fila (hasPendingLaunch não consome) — quando
+  // o login completar, o jogo abre sozinho. `pendingLogin_` trava re-chamadas
+  // (a mensagem ficaria piscando a cada frame).
+  if (pendingLogin_) return;
+  pendingLogin_ = true;
+  tab_ = LauncherTab::Account;
+  registerMode_ = false;
+  focused_.clear();
+  message_ = message;
+  messageError_ = false;
+}
+
+void Launcher::popPendingLaunch() {
+  if (!pendingLaunches_.empty()) pendingLaunches_.erase(pendingLaunches_.begin());
+  pendingLogin_ = false;
 }
 
 void Launcher::refresh() {
@@ -151,6 +172,7 @@ void Launcher::doLogin() {
   profile_.setAvatars(result.avatars);
   profile_.save();
   fieldPassword_.clear();
+  pendingLogin_ = false;
   message_ = "bem-vindo, " + result.user.nickname + "!";
   messageError_ = false;
   if (result.avatars.empty()) {
@@ -239,37 +261,63 @@ void Launcher::saveAvatar() {
 
 void Launcher::drawAvatarPreview(sf::RenderTarget& target, const sf::FloatRect& area,
                                  const AvatarInfo& avatar) {
-  drawPanel(target, area, sf::Color(24, 40, 63), kLine);
   if (!previewReady_) {
+    drawPanel(target, area, kPanel, kLine);
     drawText(target, font_, clip("3D: " + previewError_, 40), area.position.x + 10, area.position.y + 10, 12,
              kMuted);
     return;
   }
   if (area.size.x < 4 || area.size.y < 4) return;
+  // Sem painel branco: ele seria desenhado POR CIMA do 3D no display() (o SFML
+  // envia a UI 2D depois do OpenGL cru). Só a moldura, translúcida.
+  sf::RectangleShape frame(area.size);
+  frame.setPosition(area.position);
+  frame.setFillColor(sf::Color::Transparent);
+  frame.setOutlineThickness(1.f);
+  frame.setOutlineColor(kLine);
+  target.draw(frame);
+  // Adiado: o 3D é desenhado no INÍCIO do PRÓXIMO frame (antes da UI 2D).
+  glQueue_.push_back({area, avatar});
+}
 
-  // O SFML restaura o viewport/estado do OpenGL ao continuar o desenho 2D.
-  const sf::Vector2u size = target.getSize();
-  glViewport(static_cast<int>(area.position.x),
-             static_cast<int>(static_cast<float>(size.y) - area.position.y - area.size.y),
-             static_cast<int>(area.size.x), static_cast<int>(area.size.y));
-  glEnable(GL_DEPTH_TEST);
-  glClearColor(0.09f, 0.16f, 0.25f, 1.0f);
-  glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-
-  Camera camera;
-  camera.position = Vec3{2.8f, 3.4f, 6.2f};
-  camera.target = Vec3{0, 2.0f, 0};
-  camera.fovDegrees = 42;
-  const float aspect = area.size.x / std::max(1.0f, area.size.y);
-
-  Avatar model;
-  AvatarInfo shown = avatar;
-  shown.look.username = avatar.look.username;
-  model.setup(shown.look);
-  model.update(Vec3{0, 0, 0}, spin_, 0, 0);
-  model.draw(preview_, camera, aspect);
-
+void Launcher::flushPreviews() {
+  // O OpenGL cru destrói o estado que o SFML usa para a UI (viewport, depth,
+  // blend, textura da fonte): o texto virava um bloco preto. O fundo e os
+  // previews são desenhados aqui, ANTES da fila 2D do SFML, e o estado volta
+  // com resetGLStates().
+  const sf::Vector2u size = window_.getSize();
+  glViewport(0, 0, static_cast<int>(size.x), static_cast<int>(size.y));
   glDisable(GL_DEPTH_TEST);
+
+  for (const PreviewJob& job : glQueue_) {
+    const sf::FloatRect& area = job.area;
+    // glClear ignora o viewport: sem scissor, cada card APAGARIA o boneco do
+    // card anterior (e o próprio, se a UI fosse desenhada depois).
+    const int cardY = static_cast<int>(static_cast<float>(size.y) - area.position.y - area.size.y);
+    glScissor(static_cast<int>(area.position.x), cardY,
+              static_cast<int>(area.size.x), static_cast<int>(area.size.y));
+    glEnable(GL_SCISSOR_TEST);
+    glViewport(static_cast<int>(area.position.x), cardY,
+               static_cast<int>(area.size.x), static_cast<int>(area.size.y));
+    glEnable(GL_DEPTH_TEST);
+    glClearColor(0.97f, 0.96f, 0.93f, 1.0f);
+    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+    glDisable(GL_SCISSOR_TEST);
+
+    Camera camera;
+    camera.position = Vec3{2.8f, 3.4f, 6.2f};
+    camera.target = Vec3{0, 2.0f, 0};
+    camera.fovDegrees = 42;
+    const float aspect = area.size.x / std::max(1.0f, area.size.y);
+
+    Avatar model;
+    AvatarInfo shown = job.avatar;
+    model.setup(shown.look);
+    model.update(Vec3{0, 0, 0}, spin_, 0, 0);
+    model.draw(preview_, camera, aspect);
+  }
+  glQueue_.clear();
+  window_.resetGLStates();
 }
 
 void Launcher::drawField(const sf::FloatRect& area, const std::string& value,
@@ -287,14 +335,14 @@ void Launcher::drawButton(const sf::FloatRect& area, const std::string& label, b
                           bool hovered, bool enabled) {
   sf::Color fill = kPanelSoft;
   if (!enabled) fill = kPanel;
-  else if (primary) fill = hovered ? sf::Color(96, 180, 255) : kAccent;
+  else if (primary) fill = hovered ? kAccentDark : kAccent;
   else if (hovered) fill = kLine;
   drawPanel(window_, area, fill, kLine);
 
   const std::string shown = clip(label, 32);
   const float width = static_cast<float>(shown.size()) * 8.2f;
   sf::Text text(font_, shown, 15);
-  text.setFillColor(primary ? sf::Color(11, 18, 32) : (enabled ? kText : kMuted));
+  text.setFillColor(primary ? sf::Color(22, 32, 44) : (enabled ? kText : kMuted));
   const sf::FloatRect bounds = text.getLocalBounds();
   text.setPosition(sf::Vector2f(area.position.x + (area.size.x - width) / 2 - bounds.position.x,
                                 area.position.y + (area.size.y - bounds.size.y) / 2 - bounds.position.y));
@@ -443,7 +491,7 @@ void Launcher::drawAvatarEditor(const sf::FloatRect& area) {
     const bool selected = static_cast<int>(i) == hatIndex_;
     drawPanel(window_, rect(chipX, formY, chipWidth, 30), selected ? kGold : kPanelSoft, kLine);
     sf::Text text(font_, kHatLabels[i], 12);
-    text.setFillColor(selected ? kBackground : kMuted);
+    text.setFillColor(selected ? sf::Color(22, 32, 44) : kMuted);
     text.setPosition(sf::Vector2f(chipX + 10, formY + 7));
     window_.draw(text);
     buttonRects_.push_back({"hat:" + std::to_string(i), rect(chipX, formY, chipWidth, 30), true});
@@ -557,7 +605,7 @@ LauncherResult Launcher::frame(const std::optional<sf::Event>& event, float dt) 
     const bool active = (tab_ == def.tab) && (def.enabled);
     drawPanel(window_, rect(tabX, 16, width, 32), active ? kAccent : kPanelSoft, kLine);
     sf::Text label(font_, def.label, 14);
-    label.setFillColor(active ? kBackground : (def.enabled ? kText : kMuted));
+    label.setFillColor(active ? sf::Color(22, 32, 44) : (def.enabled ? kText : kMuted));
     label.setPosition(sf::Vector2f(tabX + 13, 22));
     window_.draw(label);
     if (def.enabled) {
@@ -592,6 +640,10 @@ LauncherResult Launcher::frame(const std::optional<sf::Event>& event, float dt) 
     hasClick_ = false;
     processClick(pendingClick_);
   }
+
+  // ---- 3D por último: com scissor, o clear limpa SÓ a área de cada card
+  // (apagando o painel 2D ali) e o boneco fica por cima da UI.
+  flushPreviews();
 
   window_.display();
   return LauncherResult::None;

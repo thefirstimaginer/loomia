@@ -9,6 +9,10 @@ if(NOT CMAKE_BUILD_TYPE AND NOT CMAKE_CONFIGURATION_TYPES)
   set(CMAKE_BUILD_TYPE Release CACHE STRING "" FORCE)
 endif()
 
+# Build DEBUG (loomia-client-debug): entra no jogo sem login e mostra o HUD de
+# rede (ping, status, blocos, coordenadas). Passe -DLOOMIA_DEBUG_BUILD=ON.
+option(LOOMIA_DEBUG_BUILD "Build de depuracão: sem login, HUD de rede" OFF)
+
 set(LOOMIA_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/..")
 
 # ---------------------------------------------------------------------------
@@ -80,6 +84,8 @@ target_link_libraries(loomia-engine PUBLIC
 file(GLOB CLIENT_SOURCES "${CMAKE_CURRENT_SOURCE_DIR}/src/*.cpp")
 
 add_executable(loomia-client ${CLIENT_SOURCES})
+target_compile_definitions(loomia-client PRIVATE
+  $<$<BOOL:${LOOMIA_DEBUG_BUILD}>:LOOMIA_DEBUG_BUILD=1>)
 target_link_libraries(loomia-client PRIVATE
   loomia-engine
   SFML::Graphics
@@ -89,6 +95,10 @@ target_link_libraries(loomia-client PRIVATE
   glfw
   Threads::Threads
 )
+
+if(LOOMIA_DEBUG_BUILD)
+  set_target_properties(loomia-client PROPERTIES OUTPUT_NAME loomia-client-debug)
+endif()
 
 # RPATH para o SFML vendorizado (roda sem instalar nada).
 set_target_properties(loomia-client PROPERTIES

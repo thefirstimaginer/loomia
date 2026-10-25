@@ -45,6 +45,7 @@ type client struct {
 	id       uint32
 	name     string
 	look     json.RawMessage
+	session  string
 	inGame   bool
 	state    State
 	lastSeq  uint32
@@ -341,6 +342,21 @@ func (gs *GameServer) handleHello(addr *net.UDPAddr, peer *tcpPeer, key string, 
 		return
 	}
 
+	// Sessão única: o mesmo jogador (token de conta) não entra duas vezes.
+	// Cada sala tem um token próprio, mas o hello carrega também o token de
+	// sessão da conta (campo `session`); se já há um cliente com ele, é clone.
+	if msg.Session != "" {
+		for _, other := range gs.clients {
+			if other.inGame && other.session == msg.Session {
+				gs.send(addr, peer, map[string]string{
+					"t":     "error",
+					"message": "sessão já ativa nesta sala",
+				})
+				return
+			}
+		}
+	}
+
 	inRoom := 0
 	for _, other := range gs.clients {
 		if other.inGame {
@@ -365,6 +381,7 @@ func (gs *GameServer) handleHello(addr *net.UDPAddr, peer *tcpPeer, key string, 
 		id:       gs.nextID,
 		name:     name,
 		look:     msg.Appearance,
+		session:  msg.Session,
 		inGame:   true,
 		state:    gs.world.SpawnState(),
 		lastSeen: time.Now(),

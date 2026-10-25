@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Name=Loomia
+Comment=Cliente Loomia
+Exec=AppRun %u
+Icon=loomia
+Terminal=false
+Categories=Game;
+MimeType=x-scheme-handler/loomia;
+StartupWMClass=Loomia

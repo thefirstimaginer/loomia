@@ -2,6 +2,10 @@
 
 #include "labels.h"
 
+#ifndef LOOMIA_DEBUG_BUILD
+#define LOOMIA_DEBUG_BUILD 0
+#endif
+
 #include <glad/glad.h>
 #include <GLFW/glfw3.h>
 
@@ -95,9 +99,19 @@ GameResult GameScene::run(const PlaySession& session) {
   const std::vector<Collider> colliders = buildColliders(session.world);
   const float minY = worldMinY(session.world);
 
+  // Título com contadores ao vivo (mapa, blocos, vértices, ping).
+  const auto updateTitle = [this, &session](float ping) {
+    char title[160];
+    std::snprintf(title, sizeof(title), "Loomia - %s - Blocos: %zu - Vertices: %zu - Ping: %s",
+                  session.mapName.c_str(), session.world.blocks.size(), renderer_.vertexCount(),
+                  ping >= 0 ? std::to_string(static_cast<int>(ping)).c_str() : "--");
+    glfwSetWindowTitle(window_, title);
+  };
+  updateTitle(-1);
+
   std::string channelError;
   if (!channel_.connect(host, port, session.token, profile_.displayName(), session.appearanceJson,
-                        channelError)) {
+                        channelError, profile_.token())) {
     std::fprintf(stderr, "[loomia] %s\n", channelError.c_str());
     return GameResult::BackToLauncher;
   }
@@ -148,6 +162,7 @@ GameResult GameScene::run(const PlaySession& session) {
   double pingTimer = 0;
   uint32_t pingId = 0;
   bool firstPerson = false;
+  bool debugHud = LOOMIA_DEBUG_BUILD;
 
   std::printf("[loomia] no mundo \"%s\" (sala %s)\n", session.mapName.c_str(), session.server.c_str());
 
@@ -166,6 +181,14 @@ GameResult GameScene::run(const PlaySession& session) {
       vHeld = true;
     } else {
       vHeld = false;
+    }
+    // F3 liga/desliga o HUD de debug (sempre disponível na build debug).
+    static bool f3Held = false;
+    if (glfwGetKey(window_, GLFW_KEY_F3) == GLFW_PRESS) {
+      if (!f3Held) debugHud = !debugHud;
+      f3Held = true;
+    } else {
+      f3Held = false;
     }
 
     const bool forward = glfwGetKey(window_, GLFW_KEY_W) == GLFW_PRESS ||
@@ -233,6 +256,7 @@ GameResult GameScene::run(const PlaySession& session) {
     if (pingTimer > 1.0) {
       pingTimer = 0;
       channel_.ping(++pingId, nowSeconds());
+      updateTitle(channel_.pingMs());
     }
 
     // Outros jogadores.
@@ -311,6 +335,30 @@ GameResult GameScene::run(const PlaySession& session) {
           (void) id;
           drawName(other.position, other.avatar.name(), Color3{232, 238, 251});
         }
+        labels.end();
+      }
+
+      // HUD de debug (build loomia-client-debug): ping, rede, blocos, coords.
+      if (debugHud && labelsReady) {
+        const bool online = channel_.hasWelcome() && channel_.isOpen();
+        const float ping = channel_.pingMs();
+        char line1[96];
+        std::snprintf(line1, sizeof(line1), "ping %s  rede %s",
+                      ping >= 0 ? std::to_string(static_cast<int>(ping)).c_str() : "--",
+                      online ? "ok" : "off");
+        char line2[96];
+        std::snprintf(line2, sizeof(line2), "blocos %zu  sala %u",
+                      session.world.blocks.size(), channel_.localId());
+        char line3[96];
+        std::snprintf(line3, sizeof(line3), "x %.1f  y %.1f  z %.1f", state.position.x,
+                      state.position.y, state.position.z);
+        const Color3 hudColor{140, 255, 140};
+        labels.begin(width, height);
+        const float scale = std::max(1.5f, static_cast<float>(height) / 640.f);
+        const float x0 = 12, y0 = 14;
+        labels.drawCentered(x0 + 60 * scale, y0, line1, hudColor, scale, 0.9f);
+        labels.drawCentered(x0 + 60 * scale, y0 + 18 * scale, line2, hudColor, scale, 0.9f);
+        labels.drawCentered(x0 + 60 * scale, y0 + 36 * scale, line3, hudColor, scale, 0.9f);
         labels.end();
       }
     }

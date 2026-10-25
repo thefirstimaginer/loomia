@@ -10,6 +10,10 @@
 // janela do jogo no momento do play.
 #include <SFML/Graphics.hpp>
 
+#ifndef LOOMIA_DEBUG_BUILD
+#define LOOMIA_DEBUG_BUILD 0
+#endif
+
 #include <atomic>
 #include <cerrno>
 #include <chrono>
@@ -72,10 +76,20 @@ bool notifyRunningInstance(const std::string& link) {
   address.sin_family = AF_INET;
   address.sin_port = htons(kBridgePort);
   address.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
-  const ssize_t sent = sendto(socketHandle, link.data(), link.size(), 0,
-                              reinterpret_cast<sockaddr*>(&address), sizeof(address));
+  // `connect` + `send` permite o ICMP "porta fechada" chegar como ECONNREFUSED:
+  // sem ninguém ouvindo, o link NÃO foi entregue (devemos seguir como instância
+  // principal). Com `sendto` puro o datagrama "sai" e fingimos sucesso.
+  bool delivered = ::connect(socketHandle, reinterpret_cast<sockaddr*>(&address),
+                             sizeof(address)) == 0 &&
+                   ::send(socketHandle, link.data(), link.size(), 0) >= 0;
+  if (delivered) {
+    // Confirma lendo de volta: ECONNREFUSED chega no recv do mesmo socket.
+    char ack = 0;
+    const ssize_t echoed = ::recv(socketHandle, &ack, 1, MSG_DONTWAIT);
+    if (echoed < 0 && (errno == ECONNREFUSED || errno == EHOSTUNREACH)) delivered = false;
+  }
   ::close(socketHandle);
-  return sent > 0;
+  return delivered;
 #endif
 }
 
@@ -246,6 +260,14 @@ int main(int argc, char** argv) {
     // ---- jogar -------------------------------------------------------
     loomia::LaunchInfo launch;
     if (launcher.hasPendingLaunch(launch)) {
+#if !LOOMIA_DEBUG_BUILD
+      // Build default: exige login. O link fica na fila até o jogador entrar.
+      if (!profile.loggedIn()) {
+        launcher.requireLogin("Faça login na Loomia antes de entrar em um mapa");
+        continue;
+      }
+#endif
+      launcher.popPendingLaunch();
       http.setOrigin(profile.origin());
       if (profile.loggedIn()) http.setSessionToken("loomia_session=" + profile.token());
 

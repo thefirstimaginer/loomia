@@ -1,0 +1,21 @@
+#!/bin/bash
+# AppRun — ponto de entrada do AppImage do Loomia (cliente SFML + OpenGL 3.3).
+#
+# O 1º clique: registra loomia:// (uma única vez), abre o launcher e sobe o
+# ícone da bandeja.
+# Cliques seguintes (inclusive o link do site): a instância em execução recebe
+# o link pela ponte UDP local (porta 7788) e o jogo abre na mesma janela.
+set -e
+HERE="$(dirname "$(readlink -f "$0")")"
+export APPDIR="${APPDIR:-$HERE}"
+export PATH="$APPDIR/usr/bin:$PATH"
+
+# SFML vendorizado: resolver as .so a partir do próprio AppImage.
+export LD_LIBRARY_PATH="$APPDIR/usr/lib/loomia${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+
+# O cliente novo é um único binário C++ (launcher + jogo no mesmo processo).
+export LOOMIA_CLIENT_BIN="${LOOMIA_CLIENT_BIN:-$APPDIR/usr/bin/loomia-client}"
+export LOOMIA_MASTER="${LOOMIA_MASTER:-http://127.0.0.1:8090}"
+export LOOMIA_BRIDGE_PORT="${LOOMIA_BRIDGE_PORT:-7788}"
+
+exec "$LOOMIA_CLIENT_BIN" "$@"

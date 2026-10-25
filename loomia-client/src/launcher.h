@@ -41,12 +41,18 @@ class Launcher {
 
   const std::string& message() const { return message_; }
 
+  /** A build default espera login antes de entrar no mapa. */
+  void requireLogin(const std::string& message);
+  /** Remove o launch da fila (chamado quando o jogo realmente abre). */
+  void popPendingLaunch();
+
  private:
   void draw(const sf::RenderTarget& target);
   void drawAccount(const sf::FloatRect& area);
   void drawProfile(const sf::FloatRect& area);
   void drawAvatarEditor(const sf::FloatRect& area);
   void drawAvatarPreview(sf::RenderTarget& target, const sf::FloatRect& area, const AvatarInfo& avatar);
+  void flushPreviews();
   void drawField(const sf::FloatRect& area, const std::string& value, const std::string& placeholder,
                  bool secret);
   void drawButton(const sf::FloatRect& area, const std::string& label, bool primary, bool hovered,
@@ -105,6 +111,7 @@ class Launcher {
   float statusTimer_ = 0;
 
   std::vector<LaunchInfo> pendingLaunches_;
+  bool pendingLogin_ = false;
   std::string lastRefreshed_;
 
   // Clique pendente: resolvido depois do desenho (as áreas são do frame).
@@ -115,6 +122,11 @@ class Launcher {
   WorldRenderer preview_;
   bool previewReady_ = false;
   std::string previewError_;
+  struct PreviewJob {
+    sf::FloatRect area;
+    AvatarInfo avatar;
+  };
+  std::vector<PreviewJob> glQueue_;
 };
 
 }  // namespace loomia
