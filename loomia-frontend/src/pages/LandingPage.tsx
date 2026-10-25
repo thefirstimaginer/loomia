@@ -59,7 +59,7 @@ export function LandingPage() {
             ) : (
               <>
                 <Link to="/registrar" className="launch-button">
-                  ▶ CRIAR MINHA CONTA
+                  CRIAR MINHA CONTA
                 </Link>
                 <Link to="/login" className="ghost-button">
                   Já tenho conta

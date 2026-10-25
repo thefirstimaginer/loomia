@@ -1,0 +1,8 @@
+/media/adryan/imaginedevel/Projetos/loomia/loomia-client/build/CMakeFiles/loomia-engine.dir
+/media/adryan/imaginedevel/Projetos/loomia/loomia-client/build/CMakeFiles/loomia-client.dir
+/media/adryan/imaginedevel/Projetos/loomia/loomia-client/build/CMakeFiles/loomia-tests.dir
+/media/adryan/imaginedevel/Projetos/loomia/loomia-client/build/CMakeFiles/loomia-tests-udp.dir
+/media/adryan/imaginedevel/Projetos/loomia/loomia-client/build/CMakeFiles/loomia-tests-sfml-net.dir
+/media/adryan/imaginedevel/Projetos/loomia/loomia-client/build/CMakeFiles/test.dir
+/media/adryan/imaginedevel/Projetos/loomia/loomia-client/build/CMakeFiles/edit_cache.dir
+/media/adryan/imaginedevel/Projetos/loomia/loomia-client/build/CMakeFiles/rebuild_cache.dir

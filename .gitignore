@@ -25,3 +25,6 @@ Ruzit
 # Python (controlador do AppImage)
 __pycache__/
 *.pyc
+/old-loomia-engine
+/old-loomia-client-lovr
+/new-engine-src

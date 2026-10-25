@@ -23,7 +23,9 @@ async function udpFree(port: number): Promise<boolean> {
     const socket = dgram.createSocket('udp4')
     socket.once('error', () => resolve(false))
     socket.once('listening', () => socket.close(() => resolve(true)))
-    socket.bind(port)
+    // `exclusive` no bind: no Linux o padrão permite duas salas dividirem a
+    // porta UDP e a segunda não recebia nada.
+    socket.bind({ port, address: '0.0.0.0', exclusive: true })
   })
 }
 
@@ -118,11 +120,16 @@ export class RoomManager {
     return null
   }
 
-  /** Obtém (ou cria) a sala do mapa e devolve o token de entrada atualizado. */
+  /**
+   * Obtém (ou cria) a sala do mapa e devolve o token de entrada.
+   *
+   * O token NÃO é trocado a cada pedido: o cliente reenvia `hello` até receber
+   * `welcome` (UDP perde pacotes), e trocar o token entre tentativas fazia a
+   * sala recusar a conexão com "token inválido".
+   */
   async allocate(mapId: string, requestedName?: string): Promise<PublicRoom> {
     const current = this.rooms.get(mapId)
     if (current) {
-      current.launchToken = randomToken(16)
       current.tokenIssuedAt = now()
       current.lastActivity = now()
       return this.publicRoom(current)
@@ -146,6 +153,14 @@ export class RoomManager {
     if (this.rooms.size >= this.config.maxRooms) throw new Error('todas as salas estão lotadas, tente daqui a pouco')
     const port = await this.pickPort()
     if (port === null) throw new Error('sem portas livres para novas salas')
+
+    // Garante que nenhuma sala órfã (de um processo anterior) segure a porta:
+    // o Go falha em silêncio no `bind` e o cliente fica sem resposta.
+    const existing = this.rooms.get(mapId)
+    if (existing && existing.child.exitCode === null) {
+      existing.child.kill('SIGTERM')
+      await new Promise((resolve) => setTimeout(resolve, 150))
+    }
 
     const session = this.nextSession++
     this.reservedPorts.add(port)

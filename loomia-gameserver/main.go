@@ -14,6 +14,7 @@ package main
 import (
 	"bufio"
 	"bytes"
+	"context"
 	"encoding/json"
 	"flag"
 	"fmt"
@@ -109,11 +110,21 @@ func main() {
 	addr := &net.UDPAddr{IP: net.ParseIP(*bind), Port: *port}
 	var conn *net.UDPConn
 	if !*tcpMode {
-		var err error
-		conn, err = net.ListenUDP("udp", addr)
+		// No Linux, `ListenUDP` usa SO_REUSEADDR e DUAS salas podem escutar a
+		// mesma porta: a segunda rouba os pacotes e o cliente nunca recebe o
+		// `welcome`. Aqui o reuso é desligado para o bind falhar de imediato.
+		listenConfig := net.ListenConfig{
+			Control: func(network, address string, raw syscall.RawConn) error {
+				return raw.Control(func(fd uintptr) {
+					_ = syscall.SetsockoptInt(int(fd), syscall.SOL_SOCKET, syscall.SO_REUSEADDR, 0)
+				})
+			},
+		}
+		packetConn, err := listenConfig.ListenPacket(context.Background(), "udp", addr.String())
 		if err != nil {
 			log.Fatalf("udp: %v", err)
 		}
+		conn = packetConn.(*net.UDPConn)
 		defer conn.Close()
 		_ = conn.SetReadBuffer(1 << 20)
 	}
@@ -308,7 +319,9 @@ func (gs *GameServer) handle(addr *net.UDPAddr, peer *tcpPeer, msg *Msg) {
 		gs.send(addr, peer, map[string]any{"t": "respawn", "p": c.state.Pos})
 	case "bye":
 		delete(gs.clients, key)
-		gs.broadcastPlayers()
+		// `broadcastPlayers` pega o mutex: chamar em goroutine evita o
+		// deadlock (o `handle` ainda o segura neste ponto).
+		go gs.broadcastPlayers()
 	}
 }
 
@@ -424,6 +437,14 @@ func (gs *GameServer) tick() {
 
 	entries := make([]SnapshotEntry, 0, len(gs.clients))
 	dropped := make([]*client, 0)
+	// Envios montados sob lock e despachados depois dele (ver abaixo).
+	type delivery struct {
+		addr   *net.UDPAddr
+		peer   *tcpPeer
+		ack    uint32
+		others []SnapshotEntry
+	}
+	deliveries := make([]delivery, 0, len(gs.clients))
 	for key, c := range gs.clients {
 		if !c.inGame {
 			if now.Sub(c.lastSeen) > helloTimeout {
@@ -455,14 +476,20 @@ func (gs *GameServer) tick() {
 				others = append(others, entry)
 			}
 		}
-		gs.send(c.addr, c.peer, map[string]any{
-			"t":       "snapshot",
-			"tick":    tick,
-			"ack":     c.lastSeq,
-			"players": others,
-		})
+		deliveries = append(deliveries, delivery{addr: c.addr, peer: c.peer, ack: c.lastSeq, others: others})
 	}
 	gs.mu.Unlock()
+
+	// O I/O de UDP acontece FORA do mutex: com ele preso, um socket cheio
+	// travava a sala inteira (o `readLoop` nunca mais pegava o lock).
+	for _, entry := range deliveries {
+		gs.send(entry.addr, entry.peer, map[string]any{
+			"t":       "snapshot",
+			"tick":    tick,
+			"ack":     entry.ack,
+			"players": entry.others,
+		})
+	}
 
 	// O `players` anuncia quem entrou/saiu. Fora do mutex: broadcastPlayers
 	// também lê a lista de clientes.
