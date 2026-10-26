@@ -15,7 +15,8 @@
     "check": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
-    "pg": "8.16.3"
+    "pg": "8.16.3",
+    "swagger": "^0.7.5"
   },
   "devDependencies": {
     "@types/node": "24.19.2",

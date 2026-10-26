@@ -28,8 +28,7 @@
         160,
         60
       ],
-      "material": "grass",
-      "collidable": true
+      "material": "grass"
     },
     {
       "position": [
@@ -39,7 +38,7 @@
       ],
       "size": [
         3,
-        0.04,
+        0.05,
         1.4
       ],
       "color": [
@@ -58,7 +57,7 @@
       ],
       "size": [
         3,
-        0.04,
+        0.05,
         1.4
       ],
       "color": [
@@ -77,7 +76,7 @@
       ],
       "size": [
         3,
-        0.04,
+        0.05,
         1.4
       ],
       "color": [
@@ -96,7 +95,7 @@
       ],
       "size": [
         3,
-        0.04,
+        0.05,
         1.4
       ],
       "color": [
@@ -115,7 +114,7 @@
       ],
       "size": [
         3,
-        0.04,
+        0.05,
         1.4
       ],
       "color": [
@@ -134,7 +133,7 @@
       ],
       "size": [
         3,
-        0.04,
+        0.05,
         1.4
       ],
       "color": [
@@ -153,7 +152,7 @@
       ],
       "size": [
         3,
-        0.04,
+        0.05,
         1.4
       ],
       "color": [
@@ -172,7 +171,7 @@
       ],
       "size": [
         3,
-        0.04,
+        0.05,
         1.4
       ],
       "color": [
@@ -191,7 +190,7 @@
       ],
       "size": [
         3,
-        0.04,
+        0.05,
         1.4
       ],
       "color": [
@@ -210,7 +209,7 @@
       ],
       "size": [
         3,
-        0.04,
+        0.05,
         1.4
       ],
       "color": [
@@ -237,8 +236,7 @@
         70,
         55
       ],
-      "material": "brick",
-      "collidable": true
+      "material": "brick"
     },
     {
       "position": [
@@ -256,8 +254,7 @@
         70,
         55
       ],
-      "material": "brick",
-      "collidable": true
+      "material": "brick"
     },
     {
       "position": [
@@ -275,8 +272,7 @@
         70,
         55
       ],
-      "material": "brick",
-      "collidable": true
+      "material": "brick"
     },
     {
       "position": [
@@ -294,8 +290,7 @@
         70,
         55
       ],
-      "material": "brick",
-      "collidable": true
+      "material": "brick"
     },
     {
       "position": [
@@ -313,8 +308,7 @@
         70,
         55
       ],
-      "material": "brick",
-      "collidable": true
+      "material": "brick"
     },
     {
       "position": [
@@ -332,8 +326,7 @@
         70,
         55
       ],
-      "material": "brick",
-      "collidable": true
+      "material": "brick"
     },
     {
       "position": [
@@ -351,8 +344,7 @@
         130,
         140
       ],
-      "material": "stone",
-      "collidable": true
+      "material": "stone"
     },
     {
       "position": [
@@ -370,8 +362,7 @@
         60,
         50
       ],
-      "material": "plastic",
-      "collidable": true
+      "material": "plastic"
     },
     {
       "position": [
@@ -389,8 +380,7 @@
         200,
         70
       ],
-      "material": "plastic",
-      "collidable": true
+      "material": "plastic"
     },
     {
       "position": [
@@ -408,8 +398,7 @@
         110,
         200
       ],
-      "material": "plastic",
-      "collidable": true
+      "material": "plastic"
     },
     {
       "position": [
@@ -427,8 +416,7 @@
         86,
         48
       ],
-      "material": "wood",
-      "collidable": true
+      "material": "wood"
     },
     {
       "position": [
@@ -446,8 +434,7 @@
         70,
         55
       ],
-      "material": "brick",
-      "collidable": true
+      "material": "brick"
     },
     {
       "position": [
@@ -465,8 +452,7 @@
         70,
         55
       ],
-      "material": "brick",
-      "collidable": true
+      "material": "brick"
     },
     {
       "position": [
@@ -484,8 +470,7 @@
         70,
         55
       ],
-      "material": "brick",
-      "collidable": true
+      "material": "brick"
     },
     {
       "position": [
@@ -503,8 +488,7 @@
         70,
         55
       ],
-      "material": "brick",
-      "collidable": true
+      "material": "brick"
     },
     {
       "position": [
@@ -522,27 +506,7 @@
         70,
         55
       ],
-      "material": "brick",
-      "collidable": true
-    },
-    {
-      "position": [
-        16,
-        3.5,
-        5
-      ],
-      "size": [
-        3,
-        1,
-        0.5
-      ],
-      "color": [
-        150,
-        70,
-        55
-      ],
-      "material": "brick",
-      "collidable": true
+      "material": "brick"
     },
     {
       "position": [
@@ -560,8 +524,7 @@
         92,
         100
       ],
-      "material": "stone",
-      "collidable": true
+      "material": "stone"
     },
     {
       "position": [
@@ -598,8 +561,7 @@
         64,
         38
       ],
-      "material": "wood",
-      "collidable": true
+      "material": "wood"
     },
     {
       "position": [
@@ -617,8 +579,7 @@
         120,
         52
       ],
-      "material": "grass",
-      "collidable": true
+      "material": "grass"
     },
     {
       "position": [
@@ -636,8 +597,7 @@
         120,
         52
       ],
-      "material": "grass",
-      "collidable": true
+      "material": "grass"
     },
     {
       "position": [
@@ -655,8 +615,7 @@
         64,
         38
       ],
-      "material": "wood",
-      "collidable": true
+      "material": "wood"
     },
     {
       "position": [
@@ -674,8 +633,7 @@
         120,
         52
       ],
-      "material": "grass",
-      "collidable": true
+      "material": "grass"
     },
     {
       "position": [
@@ -693,8 +651,7 @@
         120,
         52
       ],
-      "material": "grass",
-      "collidable": true
+      "material": "grass"
     },
     {
       "position": [
@@ -712,8 +669,7 @@
         64,
         38
       ],
-      "material": "wood",
-      "collidable": true
+      "material": "wood"
     },
     {
       "position": [
@@ -731,8 +687,7 @@
         120,
         52
       ],
-      "material": "grass",
-      "collidable": true
+      "material": "grass"
     },
     {
       "position": [
@@ -750,8 +705,7 @@
         120,
         52
       ],
-      "material": "grass",
-      "collidable": true
+      "material": "grass"
     },
     {
       "position": [
@@ -769,8 +723,7 @@
         64,
         38
       ],
-      "material": "wood",
-      "collidable": true
+      "material": "wood"
     },
     {
       "position": [
@@ -788,8 +741,7 @@
         120,
         52
       ],
-      "material": "grass",
-      "collidable": true
+      "material": "grass"
     },
     {
       "position": [
@@ -807,8 +759,7 @@
         120,
         52
       ],
-      "material": "grass",
-      "collidable": true
+      "material": "grass"
     },
     {
       "position": [
@@ -997,8 +948,7 @@
         92,
         100
       ],
-      "material": "stone",
-      "collidable": true
+      "material": "stone"
     },
     {
       "position": [
@@ -1035,8 +985,7 @@
         92,
         100
       ],
-      "material": "stone",
-      "collidable": true
+      "material": "stone"
     },
     {
       "position": [
@@ -1073,8 +1022,7 @@
         92,
         100
       ],
-      "material": "stone",
-      "collidable": true
+      "material": "stone"
     },
     {
       "position": [
@@ -1111,8 +1059,7 @@
         92,
         100
       ],
-      "material": "stone",
-      "collidable": true
+      "material": "stone"
     },
     {
       "position": [
@@ -1149,8 +1096,7 @@
         128,
         45
       ],
-      "material": "grass",
-      "collidable": true
+      "material": "grass"
     },
     {
       "position": [
@@ -1168,8 +1114,7 @@
         128,
         45
       ],
-      "material": "grass",
-      "collidable": true
+      "material": "grass"
     },
     {
       "position": [
@@ -1187,8 +1132,7 @@
         128,
         45
       ],
-      "material": "grass",
-      "collidable": true
+      "material": "grass"
     },
     {
       "position": [
@@ -1206,8 +1150,152 @@
         128,
         45
       ],
-      "material": "grass",
-      "collidable": true
+      "material": "grass"
+    },
+    {
+      "position": [
+        32,
+        0.5,
+        -5
+      ],
+      "size": [
+        1,
+        1,
+        1
+      ],
+      "color": [
+        110,
+        80,
+        190
+      ],
+      "material": "stone"
+    },
+    {
+      "position": [
+        32,
+        0.5,
+        -5
+      ],
+      "size": [
+        1,
+        1,
+        1
+      ],
+      "color": [
+        110,
+        80,
+        190
+      ],
+      "material": "stone"
+    },
+    {
+      "position": [
+        32,
+        0.5,
+        -5
+      ],
+      "size": [
+        1,
+        1,
+        1
+      ],
+      "color": [
+        110,
+        80,
+        190
+      ],
+      "material": "stone"
+    },
+    {
+      "position": [
+        31,
+        0.5,
+        -5
+      ],
+      "size": [
+        1,
+        1,
+        1
+      ],
+      "color": [
+        110,
+        80,
+        190
+      ],
+      "material": "stone"
+    },
+    {
+      "position": [
+        30,
+        0.5,
+        -5
+      ],
+      "size": [
+        1,
+        1,
+        1
+      ],
+      "color": [
+        110,
+        80,
+        190
+      ],
+      "material": "stone"
+    },
+    {
+      "position": [
+        30,
+        0.5,
+        -5
+      ],
+      "size": [
+        1,
+        1,
+        1
+      ],
+      "color": [
+        110,
+        80,
+        190
+      ],
+      "material": "stone"
+    },
+    {
+      "position": [
+        29,
+        0.5,
+        -5
+      ],
+      "size": [
+        1,
+        1,
+        1
+      ],
+      "color": [
+        110,
+        80,
+        190
+      ],
+      "material": "stone"
+    },
+    {
+      "position": [
+        28,
+        0.5,
+        -5
+      ],
+      "size": [
+        1,
+        1,
+        1
+      ],
+      "color": [
+        110,
+        80,
+        190
+      ],
+      "material": "stone"
     }
-  ]
+  ],
+  "version": 1
 }
