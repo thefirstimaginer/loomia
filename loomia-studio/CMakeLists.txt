@@ -13,6 +13,9 @@ set(CLIENT_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/../loomia-client")
 add_executable(loomia-studio
   src/main.cpp
   src/editor.cpp
+  src/editor_ui.cpp
+  src/editor_actions.cpp
+  src/editor_gizmo.cpp
   src/font.cpp
   src/templates.cpp
   "${CLIENT_ROOT}/engine/world.cpp"
