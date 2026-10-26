@@ -1,20 +1,23 @@
-// Painel de administração do Loomia.
+// Painel de administração do Loomia — mesmo visual do site do jogador.
 
 import { useEffect, useState } from 'react'
 import { adminApi, type AdminUser } from './lib/api'
 import { DashboardPage } from './pages/DashboardPage'
 import { LoginPage } from './pages/LoginPage'
 import { PlayersPage } from './pages/PlayersPage'
+import { RegisterPage } from './pages/RegisterPage'
 import { ReportsPage } from './pages/ReportsPage'
 import { TicketsPage } from './pages/TicketsPage'
+import alphalogo from './assets/logoalpha.png'
 
-type Tab = 'dashboard' | 'players' | 'reports' | 'tickets'
+type Tab = 'dashboard' | 'players' | 'reports' | 'tickets' | 'register'
 
 const TABS: { id: Tab; label: string }[] = [
   { id: 'dashboard', label: 'Dashboard' },
   { id: 'players', label: 'Jogadores' },
   { id: 'reports', label: 'Reports' },
   { id: 'tickets', label: 'Tickets' },
+  { id: 'register', label: 'Criar Admin' },
 ]
 
 export default function App() {
@@ -42,8 +45,8 @@ export default function App() {
     <div className="admin">
       <header className="admin-bar">
         <div className="admin-brand">
-          <span className="admin-logo">LOOMIA</span>
-          <span className="admin-tag">painel de administração</span>
+          <img src={alphalogo} alt="The Loomia Logo!" className="admin-logo-img" />
+          <span className="admin-tag">Em Construção!</span>
         </div>
         <nav className="admin-tabs">
           {TABS.map((entry) => (
@@ -57,10 +60,12 @@ export default function App() {
           ))}
         </nav>
         <div className="admin-user">
-          <span>
-            {admin.nickname ?? admin.firstName} <small>({admin.role})</small>
+          <span className="profile-chip">
+            <span className="profile-dot" />
+            {admin.nickname ?? admin.firstName}
+            <small>({admin.role})</small>
           </span>
-          <button className="button ghost small" onClick={() => void logout()}>
+          <button className="ghost-button tiny" onClick={() => void logout()}>
             Sair
           </button>
         </div>
@@ -71,7 +76,12 @@ export default function App() {
         {tab === 'players' && <PlayersPage />}
         {tab === 'reports' && <ReportsPage />}
         {tab === 'tickets' && <TicketsPage />}
+        {tab === 'register' && <RegisterPage onCreated={setAdmin} />}
       </main>
+
+      <footer className="admin-footer">
+        <span>&copy; 2026 Loomia (Beta) — painel de administração</span>
+      </footer>
     </div>
   )
 }

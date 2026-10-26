@@ -118,7 +118,7 @@ function ProfileContent({
           <Link to="/explorar" className="launch-button">
             ▶ EXPLORAR MUNDOS
           </Link>
-          <Link to="/corner" className="ghost-button">
+          <Link to="/club" className="ghost-button">
             Loomier&apos;s Corner
           </Link>
           <button type="button" className="ghost-button danger" onClick={() => void logout()}>
@@ -268,9 +268,9 @@ function ProfileContent({
 
       <section className="card">
         <h2>Meus mundos</h2>
-        <p className="muted">Veja o que você publicou na Loomier&apos;s Corner.</p>
-        <button type="button" className="ghost-button" onClick={() => navigate('/corner')}>
-          Abrir a Corner
+        <p className="muted">Veja o que você publicou no Loomier&apos;s Club.</p>
+        <button type="button" className="ghost-button" onClick={() => navigate('/club')}>
+          Abrir o Club
         </button>
       </section>
     </main>

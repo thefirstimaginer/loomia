@@ -14,7 +14,7 @@ export function RequireLogin({ intention }: { intention: string }) {
         </p>
         <div className="hero-actions">
           <Link to="/registrar" className="launch-button">
-            ▶ CRIAR CONTA
+            CRIAR CONTA
           </Link>
           <Link to="/login" className="ghost-button">
             Já tenho conta

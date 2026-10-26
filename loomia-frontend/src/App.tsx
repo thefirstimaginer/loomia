@@ -1,10 +1,13 @@
 import { SiteFooter, SiteHeader } from './components/Layout'
 import { useRoute } from './lib/router'
 import { SessionProvider } from './lib/session'
-import { CornerPage } from './pages/CornerPage'
+import { BlogPage } from './pages/BlogPage'
+import { CatalogPage } from './pages/CatalogPage'
+import { ClubPage } from './pages/ClubPage'
 import { DownloadPage } from './pages/DownloadPage'
 import { FriendsPage } from './pages/FriendsPage'
 import { ExplorePage } from './pages/ExplorePage'
+import { ForumPage } from './pages/ForumPage'
 import { LandingPage } from './pages/LandingPage'
 import { LoginPage } from './pages/LoginPage'
 import { PlayerPage } from './pages/PlayerPage'
@@ -12,18 +15,23 @@ import { ProfilePage } from './pages/ProfilePage'
 import { RegisterPage } from './pages/RegisterPage'
 import { TicketsPage } from './pages/TicketsPage'
 import { WelcomePage } from './pages/WelcomePage'
+import { WorldPage } from './pages/WorldPage'
 
 /**
  * O site do Loomia.
  *
  * Rotas:
  *   /                  landing
- *   /explorar          catálogo (login obrigatório)
- *   /jogar/:mapa       catálogo com o mundo selecionado (login obrigatório)
+ *   /explore           aba de mundos (login obrigatório)
+ *   /explore/:id       página de um mundo (preview, criador, visitas, estrelas)
+ *   /catalog           catálogo de cosméticos
+ *   /amigos            rede de jogadores + pedidos (login obrigatório)
+ *   /forum             salas de discussão (login obrigatório)
+ *   /blog              notícias oficiais da plataforma
+ *   /club              Loomier's Club (criação de mundos, login obrigatório)
  *   /login /registrar  contas
  *   /boas-vindas       primeiro avatar (depois do registro)
  *   /perfil            conta + avatares
- *   /corner            Loomier's Corner (login obrigatório)
  *   /download          cliente Loomia (.AppImage)
  */
 export default function App() {
@@ -53,8 +61,11 @@ function renderPage(route: Route, navigate: Navigate) {
     case 'landing':
       return <LandingPage />
     case 'explore':
-    case 'play':
       return <ExplorePage />
+    case 'world':
+      return <WorldPage />
+    case 'catalog':
+      return <CatalogPage />
     case 'login':
       return <LoginPage onDone={(path) => navigate(path, { replace: true })} />
     case 'register':
@@ -63,8 +74,12 @@ function renderPage(route: Route, navigate: Navigate) {
       return <WelcomePage onDone={(path) => navigate(path, { replace: true })} />
     case 'profile':
       return <ProfilePage onNavigate={navigate} />
-    case 'corner':
-      return <CornerPage />
+    case 'club':
+      return <ClubPage />
+    case 'forum':
+      return <ForumPage />
+    case 'blog':
+      return <BlogPage />
     case 'download':
       return <DownloadPage />
     case 'player':

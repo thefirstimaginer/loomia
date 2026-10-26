@@ -239,6 +239,10 @@ bool WorldRenderer::init(std::string& error) {
 }
 
 void WorldRenderer::destroy() {
+  // Shaders também: se ficarem para os destrutores, rodariam depois do
+  // glfwTerminate (contexto morto) e davam segfault.
+  worldShader_.destroy();
+  boxShader_.destroy();
   if (worldIbo_) glDeleteBuffers(1, &worldIbo_);
   if (boxIbo_) glDeleteBuffers(1, &boxIbo_);
   if (worldVbo_) glDeleteBuffers(1, &worldVbo_);

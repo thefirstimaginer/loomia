@@ -1,0 +1,3 @@
+/media/adryan/imaginedevel/Projetos/loomia/loomia-studio/build/CMakeFiles/loomia-studio.dir
+/media/adryan/imaginedevel/Projetos/loomia/loomia-studio/build/CMakeFiles/edit_cache.dir
+/media/adryan/imaginedevel/Projetos/loomia/loomia-studio/build/CMakeFiles/rebuild_cache.dir

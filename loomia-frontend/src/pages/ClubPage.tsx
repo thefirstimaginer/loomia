@@ -1,4 +1,4 @@
-// Loomier's Corner: espaço do criador — lista, publica e atualiza seus mapas.
+// Loomier's Club: espaço do criador — lista, publica e atualiza seus mapas.
 
 import { useCallback, useEffect, useState } from 'react'
 import { RequireLogin } from '../components/RequireLogin'
@@ -26,14 +26,14 @@ const slugify = (name: string): string =>
     .replace(/^-+|-+$/g, '')
     .slice(0, 40)
 
-export function CornerPage() {
+export function ClubPage() {
   const { user, loading } = useSession()
   if (loading) return <main className="page"><p className="muted">Carregando…</p></main>
-  if (!user) return <RequireLogin intention="abrir a Loomier's Corner" />
-  return <CornerContent />
+  if (!user) return <RequireLogin intention="abrir o Loomier's Club" />
+  return <ClubContent />
 }
 
-function CornerContent() {
+function ClubContent() {
   const [maps, setMaps] = useState<MapInfo[]>([])
   const [loading, setLoading] = useState(true)
   const [editor, setEditor] = useState<{ id: string; name: string; description: string; visible: boolean; world: WorldMap } | null>(null)
@@ -121,11 +121,11 @@ function CornerContent() {
   }
 
   return (
-    <main className="page corner-page">
+    <main className="page club-page">
       <section className="page-head">
         <div>
           <p className="eyebrow">para quem cria</p>
-          <h1>Loomier&apos;s Corner</h1>
+          <h1>Loomier&apos;s Club</h1>
           <p className="lead">Publique seus mundos, atualize os que já existem e veja quantas pessoas jogaram.</p>
         </div>
         <button type="button" className="launch-button" onClick={startNew}>
@@ -135,7 +135,7 @@ function CornerContent() {
 
       {message && <p className={`form-${message.kind === 'ok' ? 'success' : 'error'}`}>{message.text}</p>}
 
-      <div className="corner-layout">
+      <div className="club-layout">
         <section className="card">
           <h2>Meus mundos ({maps.length})</h2>
           {loading ? (
@@ -149,7 +149,7 @@ function CornerContent() {
               </button>
             </div>
           ) : (
-            <ul className="corner-list">
+            <ul className="club-list">
               {maps.map((map) => (
                 <li key={map.id}>
                   <div>
@@ -167,7 +167,7 @@ function CornerContent() {
           )}
         </section>
 
-        <aside className="card corner-help">
+        <aside className="card club-help">
           <h2>Como publicar</h2>
           <ol className="steps">
             <li>Crie um mundo com o modelo pronto (ou cole um JSON de mapa).</li>

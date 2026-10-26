@@ -2,8 +2,9 @@
 // lista de amigos e busca de jogadores para adicionar.
 
 import { useCallback, useEffect, useState } from 'react'
+import { AvatarPreview } from '../components/AvatarPreview'
 import { RequireLogin } from '../components/RequireLogin'
-import { api, type Friend, type FriendRequest, type PlayerSummary } from '../lib/api'
+import { api, type Avatar, type Friend, type FriendRequest, type PlayerSummary } from '../lib/api'
 import { Link, useRoute } from '../lib/router'
 import { useSession } from '../lib/session'
 
@@ -21,14 +22,20 @@ function FriendsContent() {
   const [favorites, setFavorites] = useState<PlayerSummary[]>([])
   const [term, setTerm] = useState('')
   const [results, setResults] = useState<PlayerSummary[]>([])
+  const [network, setNetwork] = useState<(PlayerSummary & { avatar: Avatar | null })[]>([])
   const [busy, setBusy] = useState(false)
   const [message, setMessage] = useState<string | null>(null)
 
   const load = useCallback(async () => {
-    const [friendData, favoriteData] = await Promise.all([api.friends(), api.favorites()])
+    const [friendData, favoriteData, networkData] = await Promise.all([
+      api.friends(),
+      api.favorites(),
+      api.networkPlayers().catch(() => ({ players: [] as (PlayerSummary & { avatar: Avatar | null })[] })),
+    ])
     setFriends(friendData.friends)
     setRequests(friendData.requests)
     setFavorites(favoriteData.favorites)
+    setNetwork(networkData.players)
   }, [])
 
   useEffect(() => {
@@ -79,7 +86,7 @@ function FriendsContent() {
         <div>
           <p className="eyebrow">sua rede</p>
           <h1>Amigos</h1>
-          <p className="lead">Pedidos, favoritos e busca de jogadores com o mesmo gosto pelo Loomia.</p>
+          <p className="lead">Pedidos, favoritos e a rede inteira do Loomia — descubra pessoas navegando pelos perfis.</p>
         </div>
         <div className="search-box">
           <input
@@ -110,6 +117,31 @@ function FriendsContent() {
           </ul>
         </section>
       )}
+
+      <section className="card">
+        <h2>Jogadores da rede ({network.length})</h2>
+        <p className="muted small">Abra um perfil para conhecer a pessoa antes de enviar o pedido de amizade.</p>
+        {network.length === 0 ? (
+          <p className="muted">Ninguém na rede ainda.</p>
+        ) : (
+          <ul className="network-grid">
+            {network
+              .filter((player) => !term.trim() || (player.nickname ?? '').toLowerCase().includes(term.trim().toLowerCase()))
+              .map((player) => (
+                <li key={player.id}>
+                  <button className="network-card" onClick={() => navigate(`/jogadores/${player.id}`)}>
+                    <span className="network-avatar">
+                      {player.avatar ? <AvatarPreview look={player.avatar} size={72} /> : <div className="avatar-placeholder" style={{ width: 72, height: 90 }} />}
+                      <span className={`player-dot ${player.online ? 'online' : ''}`} />
+                    </span>
+                    <strong>{player.nickname}</strong>
+                    <small>{player.bio ? player.bio.slice(0, 60) : 'sem bio'}</small>
+                  </button>
+                </li>
+              ))}
+          </ul>
+        )}
+      </section>
 
       <div className="split-columns">
         <section className="card">
@@ -162,7 +194,7 @@ function FriendsContent() {
       <section className="card">
         <h2>Seus amigos ({friends.length})</h2>
         {friends.length === 0 ? (
-          <p className="muted">Sem amigos ainda — busque um jogador acima ou visite um mundo.</p>
+          <p className="muted">Sem amigos ainda — conheça alguém na lista da rede acima.</p>
         ) : (
           <ul className="people-list">
             {friends.map((friend) => (
