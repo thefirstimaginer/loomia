@@ -16,7 +16,10 @@ add_executable(loomia-studio
   src/editor_ui.cpp
   src/editor_actions.cpp
   src/editor_gizmo.cpp
+  src/editor_scripts.cpp
+  src/editor_play.cpp
   src/font.cpp
+  src/loom_format.cpp
   src/templates.cpp
   "${CLIENT_ROOT}/engine/world.cpp"
   "${CLIENT_ROOT}/engine/json.cpp"

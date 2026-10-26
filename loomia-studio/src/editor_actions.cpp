@@ -32,7 +32,21 @@ void EditorApp::newFromTemplate(int templateIndex) {
 }
 
 bool EditorApp::openLoom(const std::string& path, std::string& error) {
-  if (!loadWorld(path, world_, error)) return false;
+  // Formato v1 (ou legado migrado). Avisos de validação aparecem no status.
+  std::vector<LoomIssue> issues;
+  bool migrated = false;
+  LoomDocument doc;
+  if (!loadLoomAny(path, doc, issues, error, migrated)) return false;
+  int errors = 0;
+  for (const LoomIssue& issue : issues) {
+    if (issue.error) ++errors;
+  }
+  if (errors > 0) {
+    setStatus(std::to_string(errors) + " problema(s) de validação em " + path);
+  }
+  if (migrated) setStatus("Formato antigo migrado para .loom v1.");
+  world_ = loomToWorld(doc);
+  loomDoc_ = doc;
   filePath_ = path;
   dirty_ = false;
   selected_ = -1;

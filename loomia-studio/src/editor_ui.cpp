@@ -46,6 +46,49 @@ void EditorApp::drawUi(int fbw, int fbh) {
   const bool down = glfwGetMouseButton(window_, GLFW_MOUSE_BUTTON_LEFT) == GLFW_PRESS;
   const bool clicked = down && !mouseWasDown_;
 
+  // ---------- abas Cena/Scripts (abaixo da toolbar) ----------
+  {
+    const float tabY = static_cast<float>(UI_BAR_H) + 6.f;
+    const float tabW = 96.f, tabH = 34.f;
+    float tabX = 12.f;
+    const char* tabNames[] = {"Cena", "Scripts"};
+    for (int tab = 0; tab < 2; ++tab) {
+      const bool active = activeTab_ == tab;
+      ui_.rect(tabX, tabY, tabW, tabH, active ? 0.91f : 0.99f, active ? 0.71f : 0.99f, active ? 0.17f : 1.f);
+      ui_.frame(tabX, tabY, tabW, tabH, 2, 0.08f, 0.12f, 0.17f);
+      uiText(tabNames[tab], tabX + (tabW - font_.textWidth(tabNames[tab], 14)) / 2, tabY + 10, 14,
+             active ? 0.15f : 0.35f, active ? 0.12f : 0.4f, 0.02f);
+      if (clicked && buttonHit(mx, my, tabX, tabY, tabW, tabH)) {
+        activeTab_ = tab;
+        scriptPanelSel_ = -1;
+      }
+      tabX += tabW + 6.f;
+    }
+
+    // Botão Play (janela separada, mesma engine; Ctrl+P também dispara)
+    {
+      const float px = tabX + 14.f;
+      ui_.rect(px, tabY, 92.f, tabH, 0.91f, 0.71f, 0.17f);
+      ui_.frame(px, tabY, 92.f, tabH, 2, 0.08f, 0.12f, 0.17f);
+      uiText("▶ Play", px + (92.f - font_.textWidth("▶ Play", 14)) / 2, tabY + 10, 14, 0.15f, 0.12f, 0.f);
+      if (clicked && buttonHit(mx, my, px, tabY, 92.f, tabH)) runPlayTest();
+    }
+
+    // Sidebar adaptável (abaixo das abas, ao lado da área de trabalho)
+    if (activeTab_ == 0) drawScenePanel(fbw, fbh);
+    else drawScriptsPanel(fbw, fbh);
+  }
+
+  // ---------- preferências (⚙, canto direito abaixo da toolbar) ----------
+  {
+    const float px = static_cast<float>(fbw) - 136.f, py = static_cast<float>(UI_BAR_H) + 6.f;
+    ui_.rect(px, py, 124.f, 34.f, 0.97f, 0.97f, 1.f);
+    ui_.frame(px, py, 124.f, 34.f, 2, 0.08f, 0.12f, 0.17f);
+    uiText("⚙ Opções", px + 26, py + 10, 13, 0.15f, 0.2f, 0.3f);
+    if (clicked && buttonHit(mx, my, px, py, 124.f, 34.f)) prefsOpen_ = !prefsOpen_;
+    if (prefsOpen_) drawPrefs(px, py + 40);
+  }
+
   // ---------- barra de ferramentas superior
   const float barY = 0;
   ui_.rect(0, barY, W, static_cast<float>(UI_BAR_H), 1.f, 0.99f, 0.96f);
@@ -287,7 +330,7 @@ void EditorApp::drawWelcome(int fbw, int fbh) {
     // clique (com consumo — um widget por frame)
     double mx, my;
     glfwGetCursorPos(window_, &mx, &my);
-    if (!clickConsumed_ && buttonHit(mx, my, x, y, cardW, cardH) &&
+    if (!clickConsumed_ && uiCooldown_ == 0 && buttonHit(mx, my, x, y, cardW, cardH) &&
         glfwGetMouseButton(window_, GLFW_MOUSE_BUTTON_LEFT) == GLFW_PRESS) {
       clickConsumed_ = true;
       newFromTemplate(index);
@@ -405,6 +448,7 @@ void EditorApp::drawConfirmExit(int fbw, int fbh) {
     if (clicked && !clickConsumed_ && buttonHit(mx, my, option.x, y + 120, bw, 42)) {
       clickConsumed_ = true;
       confirmExit_ = false;
+      uiCooldown_ = 12;  // ignora cliques por ~0.2s: nada vaza para a welcome
       if (std::strcmp(option.label, "Salvar") == 0) {
         if (!filePath_.empty()) {
           std::string err;
@@ -486,5 +530,42 @@ void EditorApp::hslToRgb(float h, float s, float v, float out[3]) const {
   out[0] = r * 255; out[1] = g * 255; out[2] = b * 255;
 }
 
+// Preferências do editor: aparência/comportamento apenas do editor — nunca
+// altera o mapa nem o jogo.
+void EditorApp::drawPrefs(float x, float y) {
+  const float w = 260.f, h = 148.f;
+  ui_.rect(x, y, w, h, 1.f, 1.f, 1.f);
+  ui_.frame(x, y, w, h, 3, 0.08f, 0.12f, 0.17f);
+  uiText("Preferências do Editor", x + 14, y + 12, 14, 0.08f, 0.12f, 0.17f);
+
+  double mx, my;
+  glfwGetCursorPos(window_, &mx, &my);
+  const bool down = glfwGetMouseButton(window_, GLFW_MOUSE_BUTTON_LEFT) == GLFW_PRESS;
+  const bool clicked = down && !mouseWasDown_;
+
+  // Toggle: snap ao criar
+  const char* snapLabel = prefsSnapAlways_ ? "[x] snap ao criar blocos" : "[ ] snap ao criar blocos";
+  uiText(snapLabel, x + 14, y + 40, 12, 0.3f, 0.35f, 0.42f);
+  if (clicked && buttonHit(mx, my, x + 10, y + 36, w - 20, 18.f)) prefsSnapAlways_ = !prefsSnapAlways_;
+
+  // Toggle: viewport com céu escuro (apenas visual do editor)
+  const char* darkLabel = prefsDark_ ? "[x] céu escuro no editor" : "[ ] céu escuro no editor";
+  uiText(darkLabel, x + 14, y + 62, 12, 0.3f, 0.35f, 0.42f);
+  if (clicked && buttonHit(mx, my, x + 10, y + 58, w - 20, 18.f)) prefsDark_ = !prefsDark_;
+
+  // Sidebar: largura
+  char label[64];
+  std::snprintf(label, sizeof(label), "sidebar: %d px", sidebarWidth_);
+  uiText(label, x + 14, y + 84, 12, 0.3f, 0.35f, 0.42f);
+  ui_.rect(x + 14, y + 102, w - 28, 10, 0.9f, 0.92f, 0.95f);
+  ui_.rect(x + 14 + (sidebarWidth_ - 140) * (w - 28) / 260.f, y + 100, 12, 14, 0.2f, 0.45f, 0.85f);
+  if (down && my > y + 98 && my < y + 118 && mx > x + 14 && mx < x + w - 14) {
+    const float t = std::clamp(static_cast<float>((mx - x - 14) / (w - 28)), 0.f, 1.f);
+    sidebarWidth_ = 140 + static_cast<int>(t * 260);
+  }
+
+  // Nota
+  uiText("Essas opções não afetam o mapa.", x + 14, y + 126, 11, 0.55f, 0.6f, 0.65f);
+}
 
 }  // namespace loomia

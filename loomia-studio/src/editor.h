@@ -13,6 +13,7 @@
 
 #include "renderer.h"
 #include "world.h"
+#include "loom_format.h"
 
 #include <string>
 #include <vector>
@@ -74,6 +75,7 @@ class EditorApp {
   std::string fontError_;
 
   World world_;
+  LoomDocument loomDoc_;   // documento v1 (scripts/lógica preservados)
   std::string filePath_;
   bool dirty_ = false;
   bool inEditor_ = false;
@@ -95,6 +97,7 @@ class EditorApp {
   double lastX_ = 0, lastY_ = 0;
   bool clickConsumed_ = false;
   bool mouseWasDown_ = false;
+  int uiCooldown_ = 0;           // frames ignorando cliques após um modal agir
   bool keys_[512] = {};
   int fbw_ = 1440, fbh_ = 860;
 
@@ -118,6 +121,12 @@ class EditorApp {
   float marqueeNow_[2] = {0, 0};
 
   // menus
+  int activeTab_ = 0;            // 0=Cena, 1=Scripts
+  int sidebarWidth_ = 260;       // px, redimensionável
+  bool prefsOpen_ = false;
+  bool prefsDark_ = false;       // preferência: fundo escuro da viewport
+  bool prefsSnapAlways_ = true;  // preferência: snap ligado ao criar
+  bool playTestOpen_ = false;    // janela de teste (Play)
   bool fileMenu_ = false;
   bool colorPicker_ = false;
   bool sceneMenu_ = false;
@@ -155,6 +164,14 @@ class EditorApp {
   void saveCopy();
   void renameMap();
   void backToWelcome();
+
+  // ---- editor_testplay.cpp ----
+  void runPlayTest();            // abre a janela de teste e bloqueia até fechar
+  void drawScriptsPanel(int fbw, int fbh);   // sidebar da aba Scripts
+  void drawScenePanel(int fbw, int fbh);     // sidebar da aba Cena
+  int scriptPanelSel_ = -1;                  // script selecionado na sidebar
+  void drawPrefs(float x, float y);         // painel de preferências
+  void drawPlayWindow();                     // janela separada do Play
 
   // ---- editor_ui.cpp ----
   struct TextDraw { std::string str; float x, y, size, r, g, b, a; };

@@ -513,6 +513,7 @@ EditorResult EditorApp::run() {
 
     glfwPollEvents();
     clickConsumed_ = false;
+    if (uiCooldown_ > 0) --uiCooldown_;
 
     // ---------- câmera: botão direito orbita, roda dá zoom, WASD move o alvo
     if (glfwGetMouseButton(window_, GLFW_MOUSE_BUTTON_RIGHT) == GLFW_PRESS) {
@@ -671,7 +672,12 @@ EditorResult EditorApp::run() {
             if (sx >= x0 && sx <= x1 && sy >= y0 && sy <= y1) selection_.push_back(static_cast<int>(index));
           }
           marqueeActive_ = false;
-          setStatus(std::to_string(selection_.size()) + " bloco(s) selecionado(s).");
+          if (!selection_.empty()) {
+            selected_ = selection_.front();  // âncora: primeiro do retângulo
+            setStatus(std::to_string(selection_.size()) + " bloco(s) selecionado(s) — troque para Move/Scale para arrastar.");
+          } else {
+            selected_ = -1;
+          }
         }
       }
     }
