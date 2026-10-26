@@ -38,7 +38,10 @@ import { HttpError, Router, clientIp, readBody, sendJson, serializeCookie, type 
 import { inspectProtocolHandler, launchArguments } from './protocol.js'
 import { isEmailBanned, recordEvent } from './db/moderation.js'
 import { createAdminApi } from './routes.admin.js'
+import { createCatalogApi } from './routes.catalog.js'
+import { createCommunityApi } from './routes.community.js'
 import { createSocialApi } from './routes.social.js'
+import { recordVisit } from './db/community.js'
 import { config as appConfig } from './config.js'
 import { RoomManager, launchUrl } from './rooms.js'
 import { RateLimiter, type Logger } from './util.js'
@@ -418,6 +421,8 @@ export function createApi(deps: ApiDeps): Router {
     if (requestedAvatar && !chosen) throw new HttpError(404, 'avatar não encontrado', 'not_found')
 
     const room = await rooms.allocate(mapId, meta.name)
+    // A entrada na sala conta como visita do mundo (falha aqui não bloqueia o jogo).
+    await recordVisit(mapId, user?.id ?? null).catch(() => undefined)
     const playerName = user?.nickname ?? String(body.name ?? 'Loomian').slice(0, 20)
     // Cor no formato do link: sem `#` (o cliente não o espera).
     const color = chosen
@@ -565,6 +570,8 @@ export function createApi(deps: ApiDeps): Router {
   // Painel de administração e recursos sociais.
   createAdminApi(router)
   createSocialApi(router, guard)
+  createCommunityApi(router, guard)
+  createCatalogApi(router)
 
   router.get(/^\/api\/launch\/info$/, (ctx) => {
     sendJson(ctx.res, 200, {

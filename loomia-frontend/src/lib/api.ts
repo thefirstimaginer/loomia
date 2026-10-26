@@ -115,6 +115,57 @@ export interface MapInfo {
   room_open?: boolean
 }
 
+export interface MapDetail extends MapInfo {
+  visits: number
+  stars: number
+  starCount: number
+  authorNickname: string | null
+  authorAvatar: Avatar | null
+}
+
+export interface ForumRoom {
+  id: string
+  title: string
+  description: string
+  authorId: string | null
+  authorName: string
+  replies: number
+  lastActivityAt: string
+  createdAt: string
+}
+
+export interface ForumPost {
+  id: string
+  roomId: string
+  authorId: string | null
+  authorName: string
+  authorAvatar: Avatar | null
+  body: string
+  createdAt: string
+}
+
+export interface BlogPost {
+  id: string
+  slug: string
+  title: string
+  summary: string
+  body: string
+  author: string
+  createdAt: string
+  tag: string
+}
+
+export interface CatalogItem {
+  id: string
+  name: string
+  description: string
+  category: 'hat' | 'shirt' | 'color' | 'item'
+  rarity: 'common' | 'rare' | 'epic' | 'legendary'
+  price: number
+  currency: 'coins' | 'gems'
+  available: boolean
+}
+
 export interface Block {
   position: [number, number, number]
   size: [number, number, number]
@@ -230,6 +281,12 @@ export const api = {
 
   map: (id: string) => request<WorldMap>(`/api/maps/${id}`),
 
+  mapDetail: (id: string) => request<MapDetail>(`/api/maps/${id}/detail`),
+
+  starMap: (id: string) => request<{ stars: number; starred: boolean }>(`/api/maps/${id}/star`, { method: 'POST' }),
+
+  catalogItems: (search = '') => request<CatalogItem[]>(`/api/catalog${search ? `?q=${encodeURIComponent(search)}` : ''}`),
+
   myMaps: () => request<{ maps: MapInfo[] }>('/api/corner/maps'),
 
   publishMap: (input: { name: string; description: string; visible: boolean; world: WorldMap }) =>
@@ -297,6 +354,26 @@ export const api = {
 
   status: () =>
     request<{ players_online: number; rooms: { map_id: string; map_name: string; players: number }[] }>('/api/status'),
+
+  // ------------------------------------------------------- rede / fórum / blog
+  networkPlayers: () => request<{ players: (PlayerSummary & { avatar: Avatar | null })[] }>('/api/network/players'),
+
+  forumRooms: () => request<{ rooms: ForumRoom[] }>('/api/forum/rooms'),
+
+  createForumRoom: (input: { title: string; description: string }) =>
+    request<{ room: ForumRoom }>('/api/forum/rooms', { method: 'POST', body: JSON.stringify(input) }),
+
+  forumPosts: (roomId: string) => request<{ posts: ForumPost[] }>(`/api/forum/rooms/${roomId}/posts`),
+
+  createForumPost: (roomId: string, body: string) =>
+    request<{ post: ForumPost }>(`/api/forum/rooms/${roomId}/posts`, {
+      method: 'POST',
+      body: JSON.stringify({ body }),
+    }),
+
+  blogPosts: () => request<{ posts: BlogPost[] }>('/api/blog/posts'),
+
+  blogPost: (slug: string) => request<BlogPost>(`/api/blog/posts/${slug}`),
 }
 
 export function rgbToHex(color: [number, number, number]): string {

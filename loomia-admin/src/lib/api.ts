@@ -47,6 +47,10 @@ export interface AdminTicket {
   createdAt: string
 }
 
+export interface AdminCaptcha {
+  token: string
+  svg: string
+}
 export interface Dashboard {
   users: { online: number; offline: number; total: number }
   registrations: {
@@ -148,6 +152,21 @@ export const adminApi = {
       method: 'PUT',
       body: JSON.stringify({ status, resolution }),
     }),
+  createAdmin: (input: {
+    firstName: string
+    lastName: string
+    nickname: string
+    email: string
+    password: string
+    passwordConfirm: string
+    captchaToken: string
+    captchaAnswer: string
+  }) => request<{ user: AdminUser }>('/api/admin/register', {
+    method: 'POST',
+    body: JSON.stringify(input),
+  }),
+
+  captcha: (): Promise<AdminCaptcha> => request<AdminCaptcha>('/api/admin/captcha'),
 }
 
 export function formatDate(iso: string | null): string {

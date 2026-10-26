@@ -5,7 +5,7 @@ import { useCallback, useEffect, useState } from 'react'
 import { AvatarPreview } from '../components/AvatarPreview'
 import { RequireLogin } from '../components/RequireLogin'
 import { api, type ChatMessage, type PublicProfile } from '../lib/api'
-import { Link, useRoute } from '../lib/router'
+import { Link, useRoute, worldPath } from '../lib/router'
 import { useSession } from '../lib/session'
 
 export function PlayerPage() {
@@ -270,7 +270,7 @@ function PlayerProfile({ playerId }: { playerId: string }) {
             {profile.maps.map((map) => (
               <li key={map.id}>
                 <span className="player-dot" />
-                <Link to={`/jogar/${map.id}`} className="link-button">
+                <Link to={worldPath(map.id, map.name)} className="link-button">
                   {map.name}
                 </Link>
                 <small>{map.blocks} blocos</small>

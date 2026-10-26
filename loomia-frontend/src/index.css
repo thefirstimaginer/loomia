@@ -1,3 +1,5 @@
+@import url('https://fonts.googleapis.com/css2?family=Comic+Neue:ital,wght@0,300;0,400;0,700;1,300;1,400;1,700&display=swap');
+
 :root {
   --ink: #16202c;
   --ink-soft: #4c5b6c;
@@ -11,7 +13,8 @@
   --danger: #c0392b;
   --ok: #2e8b57;
 
-  font-family: 'Trebuchet MS', 'Segoe UI', system-ui, sans-serif;
+  font-family: 'Comic Neue', cursive;
+  /*font-family: 'Trebuchet MS', 'Segoe UI', system-ui, sans-serif;*/
   color: var(--ink);
   background: var(--paper);
   font-synthesis: none;
@@ -27,7 +30,7 @@ body {
   margin: 0;
   min-height: 100svh;
   background:
-    radial-gradient(circle at 15% 0%, rgba(150, 200, 240, 0.5), transparent 45%),
+    radial-gradient(circle at 15% 0%, rgba(150, 219, 240, 0.5), transparent 45%),
     radial-gradient(circle at 90% 10%, rgba(233, 181, 43, 0.25), transparent 40%),
     var(--paper);
 }
@@ -67,24 +70,11 @@ code {
   display: flex;
   flex-direction: column;
   line-height: 1;
+  align-items: center;
 }
 
-.brand-logo {
-  font-size: 30px;
-  font-weight: 900;
-  letter-spacing: 3px;
-  color: var(--ink);
-  text-shadow:
-    2px 2px 0 var(--loomia),
-    4px 4px 0 rgba(0, 0, 0, 0.12);
-}
-
-.brand-tag {
-  font-size: 11px;
-  text-transform: uppercase;
-  letter-spacing: 2.4px;
-  color: var(--ink-soft);
-  margin-top: 6px;
+.brand > img {
+  width: 12vw;
 }
 
 .topnav {
@@ -782,6 +772,8 @@ footer {
   padding: 0;
   margin: 0;
   color: var(--ink-soft);
+  text-align: center;
+  justify-content: space-between;
 }
 .hero-stats strong {
   color: var(--ink);
@@ -1444,4 +1436,288 @@ textarea {
   border-radius: 10px;
   padding: 9px 12px;
   font: inherit;
+}
+
+/* =========================================================================
+   Páginas novas: mundo (detalhe), rede de jogadores, fórum, blog
+   ========================================================================= */
+
+/* -------- página de um mundo -------------------------------------------- */
+.world-hero {
+  display: grid;
+  grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr);
+  gap: 26px;
+  align-items: start;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  padding: 24px;
+  box-shadow: 0 18px 40px rgba(22, 32, 44, 0.07);
+}
+.world-hero-info {
+  display: grid;
+  gap: 12px;
+  justify-items: start;
+}
+.world-hero-info .lead {
+  margin: 0;
+}
+.world-stats {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.stat-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: #fbfaf6;
+  padding: 6px 14px;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--ink);
+}
+.stat-chip.star {
+  cursor: pointer;
+  border-color: var(--loomia);
+  background: rgba(233, 181, 43, 0.14);
+}
+.stat-chip.star:hover {
+  background: rgba(233, 181, 43, 0.28);
+}
+.world-actions .launch-button {
+  width: auto;
+  padding: 12px 26px;
+}
+.world-author h2 {
+  margin: 0;
+}
+.world-author .profile-identity {
+  align-items: center;
+}
+
+/* -------- rede de jogadores (amigos) ------------------------------------ */
+.network-grid {
+  list-style: none;
+  margin: 12px 0 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: 12px;
+}
+.network-card {
+  width: 100%;
+  background: #fbfaf6;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  padding: 14px 10px;
+  cursor: pointer;
+  display: grid;
+  justify-items: center;
+  gap: 6px;
+  text-align: center;
+  font: inherit;
+  transition: transform 0.12s ease, border-color 0.12s ease;
+}
+.network-card:hover {
+  transform: translateY(-2px);
+  border-color: var(--loomia);
+}
+.network-card strong {
+  font-size: 14px;
+}
+.network-card small {
+  color: var(--ink-soft);
+  font-size: 12px;
+}
+.network-avatar {
+  position: relative;
+  display: inline-flex;
+}
+.network-avatar .player-dot {
+  position: absolute;
+  right: 4px;
+  bottom: 4px;
+  width: 10px;
+  height: 10px;
+  background: #b0b0b0;
+}
+
+/* -------- fórum ---------------------------------------------------------- */
+.room-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 12px;
+}
+.room-card {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 16px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  padding: 16px 18px;
+  text-decoration: none;
+  color: inherit;
+  transition: transform 0.12s ease, border-color 0.12s ease;
+}
+.room-card:hover {
+  transform: translateY(-2px);
+  border-color: var(--loomia);
+}
+.room-card strong {
+  font-size: 16px;
+}
+.room-card p {
+  margin: 4px 0;
+}
+.forum-post-list {
+  list-style: none;
+  margin: 12px 0 0;
+  padding: 0;
+  display: grid;
+  gap: 12px;
+}
+.forum-post-list li {
+  display: flex;
+  gap: 14px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 12px 14px;
+  background: #fbfaf6;
+}
+.forum-post-list header {
+  display: flex;
+  gap: 10px;
+  align-items: baseline;
+}
+.forum-post-list p {
+  margin: 6px 0 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+/* -------- blog ------------------------------------------------------------ */
+.blog-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 16px;
+}
+.blog-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 8px;
+}
+.blog-body {
+  white-space: pre-wrap;
+  color: var(--ink-soft);
+  line-height: 1.6;
+}
+
+@media (max-width: 900px) {
+  .world-hero {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* -------- catálogo ------------------------------------------------------ */
+.catalog-grid {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(230px, 1fr));
+  gap: 14px;
+}
+.catalog-card {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  padding: 16px;
+  display: grid;
+  gap: 10px;
+  transition: transform 0.12s ease, border-color 0.12s ease;
+}
+.catalog-card:hover {
+  transform: translateY(-2px);
+  border-color: var(--loomia);
+}
+.catalog-card strong {
+  font-size: 15px;
+}
+.catalog-card footer {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+}
+.catalog-swatch {
+  width: 100%;
+  aspect-ratio: 5 / 2;
+  border-radius: 10px;
+  border: 2px solid rgba(22, 32, 44, 0.25);
+}
+/* Palco do item: fundo de céu (chapéus) ou a cor real (paletas). */
+.catalog-stage {
+  width: 100%;
+  aspect-ratio: 5 / 3;
+  border-radius: 10px;
+  border: 2px solid rgba(22, 32, 44, 0.25);
+  background: linear-gradient(180deg, #bfe0f5, #e8f3fc);
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  overflow: hidden;
+}
+.catalog-stage-color {
+  align-items: center;
+}
+.catalog-stage-color code {
+  background: rgba(255, 255, 255, 0.75);
+  font-weight: 700;
+}
+.catalog-info {
+  min-height: 44px;
+}
+.catalog-tabs {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.catalog-swatch.category-hat {
+  background: linear-gradient(135deg, #f7cf55, #c8931a);
+}
+.catalog-swatch.category-shirt {
+  background: linear-gradient(135deg, #dbe9f7, #0f78be);
+}
+.catalog-swatch.category-color {
+  background: conic-gradient(#eabe19, #78c88c, #6e3ca0, #be2828, #eabe19);
+  filter: saturate(0.85);
+}
+.catalog-swatch.category-item {
+  background: linear-gradient(135deg, #eef2f7, #d5dde7);
+}
+.pill.rarity-common {
+  background: #eef2f7;
+  color: var(--ink-soft);
+}
+.pill.rarity-rare {
+  background: rgba(15, 120, 190, 0.14);
+  color: #0f78be;
+}
+.pill.rarity-epic {
+  background: rgba(110, 60, 160, 0.14);
+  color: #6e3ca0;
+}
+.pill.rarity-legendary {
+  background: rgba(233, 181, 43, 0.2);
+  color: #8a6a12;
 }

@@ -102,14 +102,22 @@ export function WorldPreview({ map }: { map: WorldMap | null }) {
         const projected = corners.map(([x, y, z]) => project(x, y, z))
         const normal = block.material === 'neon' ? 1.2 : 1
 
-        // Faces visíveis: topo + duas laterais.
-        const faces: { idx: number[]; shade: number }[] = [
-          { idx: [4, 5, 6, 7], shade: 1.05 * normal },
+        // Faces do cubo. Antes elas eram pintadas numa ordem fixa e as faces
+        // de trás ficavam POR CIMA das da frente — dava para "ver através" do
+        // bloco. Agora cada face é pintada da mais distante para a mais
+        // próxima (painter's algorithm), usando a profundidade média dos
+        // vértices projetados.
+        const faces: { idx: number[]; shade: number; depth?: number }[] = [
+          { idx: [4, 5, 6, 7], shade: 1.05 * normal }, // topo
           { idx: [1, 2, 6, 5], shade: 0.72 * normal },
           { idx: [2, 3, 7, 6], shade: 0.86 * normal },
           { idx: [0, 3, 7, 4], shade: 0.6 * normal },
           { idx: [0, 1, 5, 4], shade: 0.66 * normal },
         ]
+        for (const face of faces) {
+          face.depth = face.idx.reduce((total, i) => total + projected[i][2], 0) / face.idx.length
+        }
+        faces.sort((a, b) => (a.depth ?? 0) - (b.depth ?? 0))
 
         for (const face of faces) {
           ctx.beginPath()
@@ -128,9 +136,12 @@ export function WorldPreview({ map }: { map: WorldMap | null }) {
       }
 
       const sorted = [...solids, ...decorations].sort((a, b) => {
-        const da = a.position[0] * sin + a.position[2] * cos
-        const db = b.position[0] * sin + b.position[2] * cos
-        return da - db
+        // Mesma métrica de profundidade das faces: maior rz = mais perto.
+        const depthOf = (block: Block) => {
+          const [bx, , bz] = block.position
+          return bx * sin + bz * cos
+        }
+        return depthOf(a) - depthOf(b)
       })
       for (const block of sorted) drawBlock(block)
 

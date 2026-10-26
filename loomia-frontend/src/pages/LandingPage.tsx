@@ -37,9 +37,7 @@ export function LandingPage() {
         <div className="hero-copy">
           <p className="eyebrow">mundos em blocos · multiplayer · feito pela comunidade</p>
           <h1>
-            Entre no mundo.
-            <br />
-            Construa como em 2008.
+            Construa um mundo e jogue com amigos, como em 2008!
           </h1>
           <p className="lead">
             Loomia é um jogo online de mundos em blocos. Explore mapas criados pela comunidade, jogue com amigos
@@ -50,7 +48,7 @@ export function LandingPage() {
             {user ? (
               <>
                 <Link to="/explorar" className="launch-button">
-                  ▶ EXPLORAR MUNDOS
+                  EXPLORAR MUNDOS
                 </Link>
                 <Link to="/perfil" className="ghost-button">
                   Meu perfil
@@ -104,7 +102,7 @@ export function LandingPage() {
               <strong>Explore Mundos</strong> — pesquise pelo nome, autor ou descrição.
             </li>
             <li>
-              <strong>Baixe o cliente</strong> — o link <code>loomia://</code> abre o jogo direto na sala.
+              <strong>Baixe o cliente</strong> — Se divirta e convide seus amigos!
             </li>
           </ol>
         </article>
@@ -131,13 +129,13 @@ export function LandingPage() {
         </article>
 
         <article className="card">
-          <h2>Loomier&apos;s Corner</h2>
+          <h2>Loomier&apos;s Club</h2>
           <p className="muted">
             O espaço de quem cria. Publique seu mapa, acompanhe quantas pessoas entraram e atualize o mundo quando
             quiser.
           </p>
-          <Link to="/corner" className="ghost-button">
-            Abrir a Corner
+          <Link to="/club" className="ghost-button">
+            Entrar no Clube
           </Link>
         </article>
       </section>
