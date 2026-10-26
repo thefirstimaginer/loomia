@@ -68,6 +68,23 @@ unsigned int compileShader(const char* vsSource, const char* fsSource, std::stri
 
 }  // namespace
 
+// Decodifica um codepoint UTF-8; devolve o tamanho em bytes (1 se inválido).
+int decodeUtf8(const std::string& text, size_t pos, unsigned int& out) {
+  const unsigned char c0 = static_cast<unsigned char>(text[pos]);
+  if (c0 < 0x80) { out = c0; return 1; }
+  if ((c0 & 0xE0) == 0xC0 && pos + 1 < text.size()) {
+    out = ((c0 & 0x1F) << 6) | (static_cast<unsigned char>(text[pos + 1]) & 0x3F);
+    return 2;
+  }
+  if ((c0 & 0xF0) == 0xE0 && pos + 2 < text.size()) {
+    out = ((c0 & 0x0F) << 12) | ((static_cast<unsigned char>(text[pos + 1]) & 0x3F) << 6) |
+          (static_cast<unsigned char>(text[pos + 2]) & 0x3F);
+    return 3;
+  }
+  out = '?';
+  return 1;
+}
+
 bool UiFont::init(const std::string& ttfPath, std::string& error) {
   FT_Library library = nullptr;
   if (FT_Init_FreeType(&library)) {
@@ -83,20 +100,16 @@ bool UiFont::init(const std::string& ttfPath, std::string& error) {
 
   // Rasteriza a 64px e escala no draw — boa qualidade em qualquer tamanho.
   FT_Set_Pixel_Sizes(face, 0, 64);
-  int loaded = 0, textures = 0;
-  for (unsigned int code = 32; code < 128; ++code) {
-    if (FT_Load_Char(face, code, FT_LOAD_RENDER)) continue;
-    ++loaded;
-    if (face->glyph->bitmap.width > 0) ++textures;
+  // Rasteriza ASCII e Latin-1 (acentos). Índice: ASCII -> code-32, Latin-1 -> code-0xA1.
+  auto rasterize = [&](unsigned int codepoint, Glyph& out) {
+    if (FT_Load_Char(face, codepoint, FT_LOAD_RENDER)) return;
     const FT_GlyphSlot slot = face->glyph;
     const unsigned int w = slot->bitmap.width;
     const unsigned int h = slot->bitmap.rows;
-    Glyph& out = glyphs_[code - 32];
     out.advance = static_cast<float>(slot->advance.x >> 6);
     out.bearingX = static_cast<float>(slot->bitmap_left);
     out.bearingY = static_cast<float>(slot->bitmap_top);
-    if (w == 0 || h == 0) continue;
-
+    if (w == 0 || h == 0) return;
     std::vector<unsigned char> rgba(w * h * 4);
     for (unsigned int pixel = 0; pixel < w * h; ++pixel) {
       rgba[pixel * 4 + 0] = 255;
@@ -114,11 +127,12 @@ bool UiFont::init(const std::string& ttfPath, std::string& error) {
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
     out.w = static_cast<float>(w);
     out.h = static_cast<float>(h);
-  }
+  };
+  for (unsigned int code = 32; code < 128; ++code) rasterize(code, glyphs_[code - 32]);
+  for (unsigned int code = 0xA1; code < 0x100; ++code) rasterize(code, latin1_[code - 0xA1]);
 
   FT_Done_Face(face);
   FT_Done_FreeType(library);
-  (void)loaded; (void)textures;
 
   shader_ = compileShader(FONT_VS, FONT_FS, error);
   if (!shader_) return false;
@@ -141,14 +155,22 @@ void UiFont::destroy() {
   ready_ = false;
 }
 
+const UiFont::Glyph* UiFont::glyphFor(unsigned int codepoint) const {
+  if (codepoint >= 32 && codepoint < 128) return &glyphs_[codepoint - 32];
+  if (codepoint >= 0xA1 && codepoint < 0x100) return &latin1_[codepoint - 0xA1];
+  return nullptr;
+}
+
 float UiFont::textWidth(const std::string& text, float size) const {
   if (!ready_) return static_cast<float>(text.size()) * size * 0.55f;
   const float scale = size / 64.f;
   float width = 0;
-  for (char ch : text) {
-    const unsigned char code = static_cast<unsigned char>(ch);
-    if (code < 32 || code > 126) { width += 20 * scale; continue; }
-    width += glyphs_[code - 32].advance * scale;
+  for (size_t pos = 0; pos < text.size();) {
+    unsigned int code = 0;
+    pos += decodeUtf8(text, pos, code);
+    const Glyph* glyph = glyphFor(code);
+    if (!glyph) { width += 20 * scale; continue; }
+    width += glyph->advance * scale;
   }
   return width;
 }
@@ -188,10 +210,12 @@ void UiFont::draw(const std::string& text, float x, float y, float size, float r
   const float baseline = y + size * 0.85f;  // y = topo aproximado da linha
   glUseProgram(shader_);
 
-  for (char ch : text) {
-    const unsigned char code = static_cast<unsigned char>(ch);
-    if (code < 32 || code > 126) { cursorX += 20 * scale; continue; }
-    const Glyph& glyph = glyphs_[code - 32];
+  for (size_t pos = 0; pos < text.size();) {
+    unsigned int code = 0;
+    pos += decodeUtf8(text, pos, code);
+    const Glyph* glyphPtr = glyphFor(code);
+    if (!glyphPtr) { cursorX += 20 * scale; continue; }
+    const Glyph& glyph = *glyphPtr;
     if (!glyph.texture || glyph.w <= 0) {
       cursorX += glyph.advance * scale;
       continue;

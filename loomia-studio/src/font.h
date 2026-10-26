@@ -1,7 +1,7 @@
 // Texto TTF da UI (Comic Neue, misc/fonts) — rasterizado com FreeType no boot.
 //
-// Desenho imediato: cada glifo é um quad texturizado. A UI tem poucas
-// centenas de glifos por frame — custo desprezível, zero complexidade de atlas.
+// Desenho imediato: cada glifo é um quad texturizado. Suporta ASCII e
+// Latin-1 (acentos do português via UTF-8).
 #pragma once
 
 #include <string>
@@ -33,7 +33,11 @@ class UiFont {
     float bearingX = 0, bearingY = 0;
     float advance = 0;
   };
-  Glyph glyphs_[96] = {};
+  Glyph glyphs_[96] = {};   // ASCII 32..126 (índice = code - 32)
+  Glyph latin1_[96] = {};   // U+00A1..U+00FF (índice = code - 0xA1)
+
+  const Glyph* glyphFor(unsigned int codepoint) const;
+
   bool ready_ = false;
 
   unsigned int vao_ = 0, vbo_ = 0, shader_ = 0;

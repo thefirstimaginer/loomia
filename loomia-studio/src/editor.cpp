@@ -372,6 +372,8 @@ class EditorApp {
   bool orbiting_ = false;
   bool panning_ = false;
   double lastX_ = 0, lastY_ = 0;
+  bool clickConsumed_ = false;   // um clique só age em UM widget por frame
+  bool mouseWasDown_ = false;    // estado do botão esquerdo no frame anterior
 
   // Gizmos: 0=nenhum, 1=eixos X/Y/Z de movimento, 2=alças de escala.
   int gizmoMode_ = 0;
@@ -381,11 +383,23 @@ class EditorApp {
   float gizmoStartParam_ = 0;    // parâmetro escalar do bloco no clique
   float gizmoMouseParam_ = 0;    // parâmetro escalar do mouse no clique
   float gizmoFaceSign_ = 1;      // face arrastada: +1 (positiva) ou -1 (negativa)
+  std::vector<Vec3> selStartPos_;     // posições iniciais da seleção no arrasto
+  std::vector<Vec3> selStartSize_;    // tamanhos iniciais da seleção no arrasto
   float gizmoRayDist_ = 0;       // distância olho→bloco no clique (arrasto estável)
   float gizmoStartDot_ = 0;      // dot((ray(t)-ray0(t)), eixo) no clique
 
   // Menu "Arquivo" (dropdown da toolbar) e arquivos recentes.
   bool fileMenu_ = false;
+  bool colorPicker_ = false;     // dropdown de 256 cores (HSL grid)
+
+  // Seleção múltipla (ferramenta Select desenha retângulo; Move/Scale editam
+  // o conjunto — cada bloco com seus próprios gizmos de face).
+  std::vector<int> selection_;
+  bool marqueeActive_ = false;
+  float marqueeStart_[2] = {0, 0};
+  float marqueeNow_[2] = {0, 0};
+
+  float pickerHue_ = 0, pickerSat_ = 0.75f, pickerVal_ = 0.85f;
   std::vector<std::string> recentList_;
   void loadRecents();
   void saveRecents();
@@ -580,6 +594,7 @@ void EditorApp::newFromTemplate(int templateIndex) {
   filePath_.clear();
   dirty_ = false;
   selected_ = -1;
+  selection_.clear();
   undoStack_.clear();
   redoStack_.clear();
   renderer_.upload(world_);
@@ -592,6 +607,7 @@ bool EditorApp::openLoom(const std::string& path, std::string& error) {
   filePath_ = path;
   dirty_ = false;
   selected_ = -1;
+  selection_.clear();
   undoStack_.clear();
   redoStack_.clear();
   renderer_.upload(world_);
@@ -642,18 +658,12 @@ RayHit EditorApp::pickBlock(double mouseX, double mouseY, int fbw, int fbh) {
   Vec3 up = cross(right, forward);
   Vec3 dir = normalize(forward + mul(right, ndcX * tanHalf * aspect) + mul(up, ndcY * tanHalf));
 
-  // Chão y=0 (alvo padrão da ferramenta add).
-  float tPlane = 0;
+  // Blocos primeiro (empate na superfície favorece o bloco — era a causa da
+  // baseplate "não selecionável" por cima: o plano y=0 empatava com o topo
+  // dela e o chão ganhava).
   Vec3 best = eye + mul(dir, 400.f);
   float bestT = 400.f;
   int bestIndex = -1;
-  if (rayPlaneY(eye, dir, 0.f, tPlane) && tPlane < bestT) {
-    bestT = tPlane;
-    best = eye + mul(dir, tPlane);
-    bestIndex = -1;
-  }
-
-  // Blocos.
   for (size_t index = 0; index < world_.blocks.size(); ++index) {
     const Block& block = world_.blocks[index];
     Vec3 bmin, bmax;
@@ -667,6 +677,14 @@ RayHit EditorApp::pickBlock(double mouseX, double mouseY, int fbw, int fbh) {
       result.normal = normal;
     }
   }
+
+  // Chão y=0 por último — só vence se estiver ESTRITAMENTE mais perto.
+  float tPlane = 0;
+  if (rayPlaneY(eye, dir, 0.f, tPlane) && tPlane < bestT - 0.001f) {
+    bestT = tPlane;
+    best = eye + mul(dir, tPlane);
+    bestIndex = -1;
+  }
   result.hit = true;
   result.point = best;
   result.distance = bestT;
@@ -675,25 +693,48 @@ RayHit EditorApp::pickBlock(double mouseX, double mouseY, int fbw, int fbh) {
 }
 
 void EditorApp::deleteSelection() {
-  if (selected_ < 0 || selected_ >= static_cast<int>(world_.blocks.size())) return;
+  if (selection_.empty()) {
+    if (selected_ < 0 || selected_ >= static_cast<int>(world_.blocks.size())) return;
+    selection_.push_back(selected_);
+  }
   pushUndo();
-  world_.blocks.erase(world_.blocks.begin() + selected_);
+  // Remove do maior índice para o menor (índices estáveis).
+  std::sort(selection_.rbegin(), selection_.rend());
+  for (const int index : selection_) {
+    if (index >= 0 && index < static_cast<int>(world_.blocks.size())) {
+      world_.blocks.erase(world_.blocks.begin() + index);
+    }
+  }
+  setStatus(std::to_string(selection_.size()) + " bloco(s) removido(s) (Delete).");
+  selection_.clear();
   selected_ = -1;
   renderer_.upload(world_);
   markDirty();
-  setStatus("Bloco removido (Delete).");
 }
 
 void EditorApp::duplicateSelection() {
-  if (selected_ < 0 || selected_ >= static_cast<int>(world_.blocks.size())) return;
+  if (selection_.empty()) {
+    if (selected_ < 0 || selected_ >= static_cast<int>(world_.blocks.size())) return;
+    selection_.push_back(selected_);
+  }
   pushUndo();
-  Block copy = world_.blocks[static_cast<size_t>(selected_)];
-  copy.position.z += copy.size.z;  // encosta na frente do original
-  world_.blocks.push_back(copy);
-  selected_ = static_cast<int>(world_.blocks.size()) - 1;
+  std::vector<int> originals = selection_;  // índices crescentes
+  for (const int index : originals) {
+    if (index < 0 || index >= static_cast<int>(world_.blocks.size())) continue;
+    Block copy = world_.blocks[static_cast<size_t>(index)];
+    copy.position.z += copy.size.z;  // encosta na frente do original
+    world_.blocks.push_back(copy);
+  }
+  // A seleção passa a apontar para as cópias (no fim do vetor).
+  const int total = static_cast<int>(world_.blocks.size());
+  selection_.clear();
+  for (size_t step = 0; step < originals.size(); ++step) {
+    selection_.push_back(total - static_cast<int>(originals.size()) + static_cast<int>(step));
+  }
+  selected_ = selection_.back();
   renderer_.upload(world_);
   markDirty();
-  setStatus("Bloco duplicado (Ctrl+D).");
+  setStatus(std::to_string(originals.size()) + " bloco(s) duplicado(s) (Ctrl+D).");
 }
 
 void EditorApp::focusSelection() {
@@ -703,15 +744,20 @@ void EditorApp::focusSelection() {
 }
 
 void EditorApp::snapSelection() {
-  if (selected_ < 0 || selected_ >= static_cast<int>(world_.blocks.size())) return;
+  std::vector<int> targets = selection_;
+  if (targets.empty() && selected_ >= 0) targets.push_back(selected_);
+  if (targets.empty()) return;
   pushUndo();
-  Block& block = world_.blocks[static_cast<size_t>(selected_)];
-  block.position.x = std::round(block.position.x);
-  block.position.y = std::round(block.position.y);
-  block.position.z = std::round(block.position.z);
+  for (const int index : targets) {
+    if (index < 0 || index >= static_cast<int>(world_.blocks.size())) continue;
+    Block& block = world_.blocks[static_cast<size_t>(index)];
+    block.position.x = std::round(block.position.x);
+    block.position.y = std::round(block.position.y);
+    block.position.z = std::round(block.position.z);
+  }
   renderer_.upload(world_);
   markDirty();
-  setStatus("Posição arredondada (G).");
+  setStatus("Posições arredondadas (G).");
 }
 
 int EditorApp::buttonHit(double mx, double my, float x, float y, float w, float h) const {
@@ -758,6 +804,7 @@ EditorResult EditorApp::run() {
     lastTime = now;
 
     glfwPollEvents();
+    clickConsumed_ = false;
 
     // ---------- câmera: botão direito orbita, roda dá zoom, WASD move o alvo
     if (glfwGetMouseButton(window_, GLFW_MOUSE_BUTTON_RIGHT) == GLFW_PRESS) {
@@ -799,7 +846,8 @@ EditorResult EditorApp::run() {
       glfwGetCursorPos(window_, &mx, &my);
       const bool inViewport = my > UI_BAR_H && my < (fbh_ - UI_STATUS_H);
       const bool leftDown = glfwGetMouseButton(window_, GLFW_MOUSE_BUTTON_LEFT) == GLFW_PRESS;
-      if (inViewport && leftDown && !dragging_) {
+      if (inViewport && leftDown && !dragging_ && !mouseWasDown_ && !clickConsumed_) {
+        clickConsumed_ = true;
         dragging_ = true;
         const RayHit hit = pickBlock(mx, my, fbw_, fbh_);
         if (hit.hit) {
@@ -822,10 +870,15 @@ EditorResult EditorApp::run() {
               markDirty();
               break;
             }
-            case 1:  // Select
+            case 1: {  // Select: 1 bloco no clique; retângulo se ARRASTAR
               selected_ = hit.blockIndex;
-              if (selected_ >= 0) setStatus("Bloco " + std::to_string(selected_) + " selecionado (arraste as setas para mover, com 3/Move).");
+              selection_.clear();
+              if (selected_ >= 0) {
+                selection_.push_back(selected_);
+                setStatus("Bloco selecionado. Arraste para selecionar vários (retângulo).");
+              }
               break;
+            }
             case 4:  // Paint
               if (hit.blockIndex >= 0) {
                 pushUndo();
@@ -860,6 +913,46 @@ EditorResult EditorApp::run() {
 
       // Gizmos de mover/escalar: com ferramenta 2 ou 3, arraste as setas.
       if (tool_ == 2 || tool_ == 3) updateGizmo(mx, my, leftDown, dragging_);
+
+      // Retângulo de seleção (ferramenta Select + arrastar): acompanha o mouse.
+      if (tool_ == 1) {
+        if (dragging_ && leftDown) {
+          if (!marqueeActive_) { marqueeActive_ = true; marqueeStart_[0] = static_cast<float>(mx); marqueeStart_[1] = static_cast<float>(my); }
+          marqueeNow_[0] = static_cast<float>(mx);
+          marqueeNow_[1] = static_cast<float>(my);
+        } else if (marqueeActive_ && !leftDown) {
+          // Solta o botão: seleciona todos os blocos cujo centro projetado
+          // cai dentro do retângulo (projeção via pickBlock por amostragem).
+          const float x0 = std::min(marqueeStart_[0], marqueeNow_[0]);
+          const float x1 = std::max(marqueeStart_[0], marqueeNow_[0]);
+          const float y0 = std::min(marqueeStart_[1], marqueeNow_[1]);
+          const float y1 = std::max(marqueeStart_[1], marqueeNow_[1]);
+          selection_.clear();
+          for (size_t index = 0; index < world_.blocks.size(); ++index) {
+            // Projeta o centro do bloco: cast um raio para ele e mede a tela.
+            const Block& block = world_.blocks[index];
+            const Vec3 eye{
+                camTarget_.x + camDist_ * std::cos(camPitch_) * std::sin(camYaw_),
+                camTarget_.y + camDist_ * std::sin(camPitch_),
+                camTarget_.z + camDist_ * std::cos(camPitch_) * std::cos(camYaw_)};
+            const float aspect = static_cast<float>(fbw_) / static_cast<float>(fbh_ > 0 ? fbh_ : 1);
+            const float tanHalf = std::tan(radians(35.f));
+            Vec3 forward = normalize(sub(camTarget_, eye));
+            Vec3 right = normalize(cross(forward, {0, 1, 0}));
+            Vec3 up = cross(right, forward);
+            Vec3 toBlock = block.position - eye;
+            const float depth = dot(toBlock, forward);
+            if (depth <= 0) continue;
+            const Vec3 projected = forward * depth;
+            const Vec3 flat = toBlock - projected;
+            const float sx = fbw_ / 2.f + (dot(flat, right) / (depth * tanHalf * aspect)) * (fbw_ / 2.f);
+            const float sy = fbh_ / 2.f - (dot(flat, up) / (depth * tanHalf)) * (fbh_ / 2.f);
+            if (sx >= x0 && sx <= x1 && sy >= y0 && sy <= y1) selection_.push_back(static_cast<int>(index));
+          }
+          marqueeActive_ = false;
+          setStatus(std::to_string(selection_.size()) + " bloco(s) selecionado(s).");
+        }
+      }
     }
 
     // ---------- render 3D
@@ -879,19 +972,20 @@ EditorResult EditorApp::run() {
       const float aspect = static_cast<float>(fbw_) / static_cast<float>(fbh_ > 0 ? fbh_ : 1);
       renderer_.draw(camera, aspect);
 
-      // Seleção: bloco destacado com caixa maior semitransparente.
-      if (selected_ >= 0 && selected_ < static_cast<int>(world_.blocks.size())) {
-        const Block& block = world_.blocks[static_cast<size_t>(selected_)];
+      // Seleção: todos os blocos destacados com caixa maior semitransparente.
+      for (const int index : selection_) {
+        if (index < 0 || index >= static_cast<int>(world_.blocks.size())) continue;
+        const Block& block = world_.blocks[static_cast<size_t>(index)];
         Mat4 transform = Mat4::translation(block.position);
         transform = transform * Mat4::scale(block.size * 1.08f);
-        renderer_.drawBox(camera, aspect, transform, {255, 255, 255}, true);
+        renderer_.drawBox(camera, aspect, transform, index == selected_ ? Color3{255, 255, 255} : Color3{200, 220, 255}, true);
       }
       // Gizmos: 1 minicubo em cada face do bloco (6 alças). A cor do cubo
       // indica o eixo da face (vermelho=X, verde=Y, azul=Z). Arrastar um
       // minicubo move (ferramenta 2) ou estica/encolhe (ferramenta 3) o bloco
       // naquele eixo, dos dois lados.
       if (selected_ >= 0 && (tool_ == 2 || tool_ == 3)) {
-        const Block& block = world_.blocks[static_cast<size_t>(selected_)];
+        const Block& block = world_.blocks[static_cast<size_t>(selected_)];  // gizmo do bloco âncora
         const float cubeSize = 0.34f;
         // Faces: ±X (vermelho), ±Y (verde), ±Z (azul).
         const Color3 axisColor[3] = {{220, 60, 60}, {70, 200, 80}, {70, 110, 230}};
@@ -922,6 +1016,15 @@ EditorResult EditorApp::run() {
       drawTemplatePreviews(fbw_, fbh_);
       drawWelcome(fbw_, fbh_);
     }
+    // Retângulo de seleção (marquee) por cima da viewport.
+    if (marqueeActive_) {
+      const float x0 = std::min(marqueeStart_[0], marqueeNow_[0]);
+      const float y0 = std::min(marqueeStart_[1], marqueeNow_[1]);
+      const float wRect = std::abs(marqueeNow_[0] - marqueeStart_[0]);
+      const float hRect = std::abs(marqueeNow_[1] - marqueeStart_[1]);
+      ui_.rect(x0, y0, wRect, hRect, 0.2f, 0.5f, 0.95f, 0.12f);
+      ui_.frame(x0, y0, wRect, hRect, 2, 0.2f, 0.5f, 0.95f, 0.9f);
+    }
     ui_.flush();
     flushText();
     // Modal de alterações não salvas por cima de tudo.
@@ -933,6 +1036,7 @@ EditorResult EditorApp::run() {
     glEnable(GL_DEPTH_TEST);
     glDisable(GL_BLEND);
 
+    mouseWasDown_ = glfwGetMouseButton(window_, GLFW_MOUSE_BUTTON_LEFT) == GLFW_PRESS;
     glfwSwapBuffers(window_);
   }
 
@@ -951,7 +1055,8 @@ void EditorApp::drawWelcome(int fbw, int fbh) {
   // Fundo suave
   ui_.rect(0, 0, static_cast<float>(fbw), static_cast<float>(fbh), 0.94f, 0.93f, 0.88f, 1.f);
   uiText("Loomia Studio", fbw / 2.f - font_.textWidth("Loomia Studio", 42) / 2, 100, 42, 0.08f, 0.12f, 0.17f);
-  uiText("edite mapas .loom com a mesma engine do cliente", fbw / 2.f - font_.textWidth("edite mapas .loom com a mesma engine do cliente", 18) / 2, 160, 18, 0.3f, 0.35f, 0.42f);
+  uiText("Crie e edite seus próprios mundos, depois, compartilhe com seus amigos!", fbw / 2.f - font_.textWidth("edite mapas .loom com a mesma engine do cliente", 18) / 2, 160, 18, 0.3f, 0.35f, 0.42f);
+  uiText("Crie e edite seus próprios mundos, depois, compartilhe com seus amigos!", fbw / 2.f - font_.textWidth("Atenção, Isso é um trabalho em desenvolvimento, qualquer alteração pode causar problemas entre os mapas, seja cuidadoso!", 18) / 2, 160, 18, 0.3f, 0.35f, 0.42f);
 
   // Cartões de template
   const char* names[] = {"Baseplate", "Ilhas Flutuantes", "Obby (Parkour)", "Sala de Exposicao"};
@@ -968,10 +1073,12 @@ void EditorApp::drawWelcome(int fbw, int fbh) {
     uiText(names[index], x + 16, y + 92, 16, 0.08f, 0.12f, 0.17f);
     uiText(descs[index], x + 16, y + 116, 12, 0.35f, 0.4f, 0.46f);
     uiText("[clique para comecar]", x + 16, y + 148, 12, 0.72f, 0.55f, 0.1f);
-    // clique
+    // clique (com consumo — um widget por frame)
     double mx, my;
     glfwGetCursorPos(window_, &mx, &my);
-    if (buttonHit(mx, my, x, y, cardW, cardH) && glfwGetMouseButton(window_, GLFW_MOUSE_BUTTON_LEFT) == GLFW_PRESS) {
+    if (!clickConsumed_ && buttonHit(mx, my, x, y, cardW, cardH) &&
+        glfwGetMouseButton(window_, GLFW_MOUSE_BUTTON_LEFT) == GLFW_PRESS) {
+      clickConsumed_ = true;
       newFromTemplate(index);
       return;
     }
@@ -985,9 +1092,9 @@ void EditorApp::drawWelcome(int fbw, int fbh) {
   uiText("ABRIR .LOOM", bx + (bw - font_.textWidth("ABRIR .LOOM", 16)) / 2, by + 14, 16, 0.15f, 0.12f, 0.0f);
   double mx, my;
   glfwGetCursorPos(window_, &mx, &my);
-  static bool wasDown = false;
   const bool down = glfwGetMouseButton(window_, GLFW_MOUSE_BUTTON_LEFT) == GLFW_PRESS;
-  if (down && !wasDown && buttonHit(mx, my, bx, by, bw, bh)) {
+  if (down && !mouseWasDown_ && !clickConsumed_ && buttonHit(mx, my, bx, by, bw, bh)) {
+    clickConsumed_ = true;
     // File dialog nativo via zenity/kdialog (padrão em distros Linux)
     FILE* pipe = popen("zenity --file-selection --title='Abrir mapa .loom' 2>/dev/null | tr -d '\\n'", "r");
     char buffer[1024] = {};
@@ -1002,7 +1109,6 @@ void EditorApp::drawWelcome(int fbw, int fbh) {
     }
     if (pipe) pclose(pipe);
   }
-  wasDown = down;
 }
 
 // ------------------------------------------------------------------ UI do editor
@@ -1011,9 +1117,8 @@ void EditorApp::drawUi(int fbw, int fbh) {
   const float W = static_cast<float>(fbw), H = static_cast<float>(fbh);
   double mx, my;
   glfwGetCursorPos(window_, &mx, &my);
-  static bool wasDown = false;
   const bool down = glfwGetMouseButton(window_, GLFW_MOUSE_BUTTON_LEFT) == GLFW_PRESS;
-  const bool clicked = down && !wasDown;
+  const bool clicked = down && !mouseWasDown_;
 
   // ---------- barra de ferramentas superior
   const float barY = 0;
@@ -1114,12 +1219,12 @@ void EditorApp::drawUi(int fbw, int fbh) {
     if (clicked && buttonHit(mx, my, x, y, 80.f, 40.f)) { tool_ = index; setStatus(std::string("Ferramenta: ") + toolNames[index]); }
   }
 
-  // ---------- paleta de cores + material
+  // ---------- paleta de cores (16 básicas) + botão "Mais cores" (256, HSL)
   const unsigned char palette[][3] = {
       {230, 120, 60}, {230, 190, 40}, {100, 160, 60}, {70, 150, 200}, {110, 80, 190},
       {230, 230, 235}, {70, 70, 80}, {190, 60, 60},  {240, 160, 200}, {60, 200, 170}};
   for (int index = 0; index < 10; ++index) {
-    const float x = 540.f + index * 30.f;
+    const float x = 660.f + index * 30.f;   // após o botão Cena (antes: 540, sobrepunha)
     const float y = barY + 12.f;
     const bool match = currentColor_[0] == palette[index][0] && currentColor_[1] == palette[index][1] && currentColor_[2] == palette[index][2];
     ui_.rect(x, y, 24.f, 24.f, palette[index][0] / 255.f, palette[index][1] / 255.f, palette[index][2] / 255.f, 1.f);
@@ -1136,6 +1241,47 @@ void EditorApp::drawUi(int fbw, int fbh) {
     ui_.frame(x, y, 76.f, 40.f, 2, 0.08f, 0.12f, 0.17f);
     uiText("Cena (C)", x + 12, y + 14, 13, 0.3f, 0.35f, 0.42f);
     if (clicked && buttonHit(mx, my, x, y, 76.f, 40.f)) sceneMenu_ = !sceneMenu_;
+  }
+
+  // ---------- botão "Mais cores" (dropdown 256 cores HSL)
+  {
+    const float x = 660.f + 10 * 30.f + 12.f, y = barY + 12.f;
+    ui_.rect(x, y, 96.f, 40.f, colorPicker_ ? 0.91f : 0.96f, colorPicker_ ? 0.71f : 0.96f, colorPicker_ ? 0.17f : 0.96f);
+    ui_.frame(x, y, 96.f, 40.f, 2, 0.08f, 0.12f, 0.17f);
+    uiText("Mais cores", x + 12, y + 14, 13, colorPicker_ ? 0.15f : 0.3f, colorPicker_ ? 0.12f : 0.35f, 0.02f);
+    if (clicked && buttonHit(mx, my, x, y, 96.f, 40.f)) colorPicker_ = !colorPicker_;
+
+    if (colorPicker_) {
+      // Grid 16x16 de hue x value, saturação fixa (256 cores).
+      const float gw = 256.f, cell = gw / 16.f;
+      const float gx = x, gy = y + 46.f;
+      ui_.rect(gx - 4, gy - 4, gw + 8, gw + 8, 1.f, 1.f, 1.f);
+      ui_.frame(gx - 4, gy - 4, gw + 8, gw + 8, 2, 0.08f, 0.12f, 0.17f);
+      for (int row = 0; row < 16; ++row) {
+        for (int col = 0; col < 16; ++col) {
+          float rgb[3];
+          const float hue = col / 16.f;
+          const float val = 1.f - row / 15.f;
+          hslToRgb(hue, 0.8f, val, rgb);
+          ui_.rect(gx + col * cell, gy + row * cell, cell, cell, rgb[0] / 255, rgb[1] / 255, rgb[2] / 255);
+        }
+      }
+      // Clique escolhe a cor.
+      if (down && mx > gx && mx < gx + gw && my > gy && my < gy + gw) {
+        const int col = std::clamp(static_cast<int>((mx - gx) / cell), 0, 15);
+        const int row = std::clamp(static_cast<int>((my - gy) / cell), 0, 15);
+        float rgb[3];
+        hslToRgb(col / 16.f, 0.8f, 1.f - row / 15.f, rgb);
+        currentColor_[0] = static_cast<int>(rgb[0]);
+        currentColor_[1] = static_cast<int>(rgb[1]);
+        currentColor_[2] = static_cast<int>(rgb[2]);
+      }
+      // Fecha ao clicar fora do grid e fora do botão.
+      if (clicked && !(mx > gx - 4 && mx < gx + gw + 4 && my > gy - 4 && my < gy + gw + 4) &&
+          !buttonHit(mx, my, x, y, 96.f, 40.f)) {
+        colorPicker_ = false;
+      }
+    }
   }
 
   // ---------- linha de status
@@ -1185,7 +1331,6 @@ void EditorApp::drawUi(int fbw, int fbh) {
   // Ctrl+N: novo mapa (baseplate)
   if (ctrl && keys_['N']) { keys_['N'] = false; newFromTemplate(0); }
 
-  wasDown = down;
 }
 
 // ---------------------------------------------------------------------------
@@ -1262,7 +1407,9 @@ void EditorApp::updateGizmo(double mx, double my, bool clicked, bool held) {
   Block& block = world_.blocks[static_cast<size_t>(selected_)];
 
   const Vec3 axes[3] = {{1, 0, 0}, {0, 1, 0}, {0, 0, 1}};
-  const float cube = 0.5f;  // hitbox dos minicubos (visual = 0.34)
+  // Folga/tamanho IGUAIS ao desenho dos gizmos (ver drawUi do loop 3D).
+  const float gap = std::max(0.5f, std::max({block.size.x, block.size.y, block.size.z}) * 0.08f);
+  const float cube = std::min(0.45f, gap * 0.5f) * 1.35f;  // hitbox 35% maior
 
   auto eyePos = [&] {
     return Vec3{
@@ -1291,7 +1438,7 @@ void EditorApp::updateGizmo(double mx, double my, bool clicked, bool held) {
     for (int axis = 0; axis < 3; ++axis) {
       for (int sign = -1; sign <= 1; sign += 2) {
         const float half = (axis == 0 ? block.size.x : axis == 1 ? block.size.y : block.size.z) / 2.f;
-        const float center = sign * (half + cube / 2.f);
+        const float center = sign * (half + gap + cube / 2.f);
         Vec3 bmin = block.position, bmax = block.position;
         if (axis == 0) { bmin.x += center - cube / 2; bmax.x += center + cube / 2; bmin.y -= cube / 2; bmax.y += cube / 2; bmin.z -= cube / 2; bmax.z += cube / 2; }
         if (axis == 1) { bmin.y += center - cube / 2; bmax.y += center + cube / 2; bmin.x -= cube / 2; bmax.x += cube / 2; bmin.z -= cube / 2; bmax.z += cube / 2; }
@@ -1311,6 +1458,17 @@ void EditorApp::updateGizmo(double mx, double my, bool clicked, bool held) {
     gizmoFaceSign_ = (dot(eye + mul(dir, bestT), axes[bestAxis]) >= dot(block.position, axes[bestAxis])) ? 1.f : -1.f;
     gizmoBlockStart_ = block.position;
     gizmoBlockStartSize_ = block.size;
+    selStartPos_.clear();
+    selStartSize_.clear();
+    for (const int index : selection_) {
+      if (index >= 0 && index < static_cast<int>(world_.blocks.size())) {
+        selStartPos_.push_back(world_.blocks[static_cast<size_t>(index)].position);
+        selStartSize_.push_back(world_.blocks[static_cast<size_t>(index)].size);
+      } else {
+        selStartPos_.push_back({});
+        selStartSize_.push_back({});
+      }
+    }
     gizmoRayDist_ = bestT;                       // distância fixa do arrasto
     gizmoStartDot_ = dot(eye + mul(dir, bestT) - eye, axes[bestAxis]);  // referência no eixo
     pushUndo();
@@ -1326,44 +1484,74 @@ void EditorApp::updateGizmo(double mx, double my, bool clicked, bool held) {
   }
 
   // Arrasto: ponto do raio à MESMA distância do clique; o delta no eixo
-  // (menos a referência inicial) move/estica o bloco de forma estável.
+  // (menos a referência inicial) move/estica os blocos de forma estável.
   const Vec3 eye = eyePos();
   const Vec3 dir = mouseRay(eye);
   const Vec3 rayPoint = eye + mul(dir, gizmoRayDist_);
   const float delta = dot(rayPoint - eye, axes[gizmoAxis_]) - gizmoStartDot_;
 
+  // Função que aplica Move/Scale de UM bloco, dado seu estado inicial.
+  auto transformOne = [&](Block& target, const Vec3& startPos, const Vec3& startSize) {
+    if (tool_ == 2) {
+      // Move: desloca no eixo pela diferença do parâmetro do mouse.
+      target.position = startPos + mul(axes[gizmoAxis_], delta);
+    } else {
+      // Escala pela face arrastada; a face oposta fica fixa.
+      Vec3 size = startSize;
+      Vec3 pos = startPos;
+      const float grow = delta * gizmoFaceSign_;
+      const float halfOld = (gizmoAxis_ == 0 ? size.x : gizmoAxis_ == 1 ? size.y : size.z) / 2.f;
+      const float halfNew = std::max(0.05f, halfOld + grow / 2.f);
+      const float centerShift = (halfNew - halfOld) * gizmoFaceSign_;
+      if (gizmoAxis_ == 0) { size.x = halfNew * 2.f; pos.x += centerShift; }
+      else if (gizmoAxis_ == 1) { size.y = halfNew * 2.f; pos.y += centerShift; }
+      else { size.z = halfNew * 2.f; pos.z += centerShift; }
+      target.size = size;
+      target.position = pos;
+    }
+    if (snapEnabled_) {
+      target.position.x = std::round(target.position.x);
+      target.position.y = std::round(target.position.y);
+      target.position.z = std::round(target.position.z);
+      if (tool_ == 3) {
+        target.size.x = std::max(0.1f, std::round(target.size.x));
+        target.size.y = std::max(0.1f, std::round(target.size.y));
+        target.size.z = std::max(0.1f, std::round(target.size.z));
+      }
+    }
+  };
+
   if (tool_ == 2) {
-    block.position = gizmoBlockStart_ + mul(axes[gizmoAxis_], delta);
+    // Move o CONJUNTO: todos os selecionados deslizam juntos.
+    size_t cursor = 0;
+    for (const int index : selection_) {
+      if (index < 0 || index >= static_cast<int>(world_.blocks.size())) continue;
+      transformOne(world_.blocks[static_cast<size_t>(index)], selStartPos_[cursor], selStartSize_[cursor]);
+      ++cursor;
+    }
   } else {
-    // Escalar pela face: a face arrastada acompanha o mouse, a oposta fica fixa.
-    Vec3 size = gizmoBlockStartSize_;
-    Vec3 pos = gizmoBlockStart_;
-    const float grow = delta * gizmoFaceSign_;
-    const float halfOld = (gizmoAxis_ == 0 ? size.x : gizmoAxis_ == 1 ? size.y : size.z) / 2.f;
-    const float halfNew = std::max(0.05f, halfOld + grow / 2.f);
-    const float centerShift = (halfNew - halfOld) * gizmoFaceSign_;
-    if (gizmoAxis_ == 0) { size.x = halfNew * 2.f; pos.x += centerShift; }
-    else if (gizmoAxis_ == 1) { size.y = halfNew * 2.f; pos.y += centerShift; }
-    else { size.z = halfNew * 2.f; pos.z += centerShift; }
-    block.size = size;
-    block.position = pos;
-  }
-  if (snapEnabled_) {
-    block.position.x = std::round(block.position.x);
-    block.position.y = std::round(block.position.y);
-    block.position.z = std::round(block.position.z);
-    if (tool_ == 3) {
-      block.size.x = std::max(0.1f, std::round(block.size.x));
-      block.size.y = std::max(0.1f, std::round(block.size.y));
-      block.size.z = std::max(0.1f, std::round(block.size.z));
+    // Escala conjunta: o âncora escala pela face; os outros ganham a MESMA
+    // variação de largura no eixo (mantendo posições relativas no eixo).
+    transformOne(block, gizmoBlockStart_, gizmoBlockStartSize_);
+    const float widthAnchorBefore = (gizmoAxis_ == 0 ? gizmoBlockStartSize_.x : gizmoAxis_ == 1 ? gizmoBlockStartSize_.y : gizmoBlockStartSize_.z);
+    const float widthAnchorAfter = (gizmoAxis_ == 0 ? block.size.x : gizmoAxis_ == 1 ? block.size.y : block.size.z);
+    const float extraPerSide = (widthAnchorAfter - widthAnchorBefore) / 2.f;
+    size_t cursor = 0;
+    for (const int index : selection_) {
+      if (index == selected_) { ++cursor; continue; }
+      if (index < 0 || index >= static_cast<int>(world_.blocks.size())) continue;
+      Block& member = world_.blocks[static_cast<size_t>(index)];
+      member.size = selStartSize_[cursor];
+      member.position = selStartPos_[cursor];
+      if (gizmoAxis_ == 0) { member.size.x = std::max(0.1f, member.size.x + extraPerSide * 2.f); }
+      else if (gizmoAxis_ == 1) { member.size.y = std::max(0.1f, member.size.y + extraPerSide * 2.f); }
+      else { member.size.z = std::max(0.1f, member.size.z + extraPerSide * 2.f); }
+      ++cursor;
     }
   }
   renderer_.upload(world_);
   markDirty();
 }
-
-// undo único por arrasto: chamado no início do clique (dentro do bloco if acima).
-// (O pushUndo do gizmo é feito aqui, em updateGizmo, no momento do clique.)
 
 // ---------------------------------------------------------------------------
 // Prévias 3D dos templates na welcome screen (viewport por card via scissor)
@@ -1503,9 +1691,8 @@ void EditorApp::drawConfirmExit(int fbw, int fbh) {
 
   double mx, my;
   glfwGetCursorPos(window_, &mx, &my);
-  static bool wasDown = false;
   const bool down = glfwGetMouseButton(window_, GLFW_MOUSE_BUTTON_LEFT) == GLFW_PRESS;
-  const bool clicked = down && !wasDown;
+  const bool clicked = down && !mouseWasDown_;
 
   struct Option { const char* label; float x; };
   const float bw = 130;
@@ -1518,7 +1705,8 @@ void EditorApp::drawConfirmExit(int fbw, int fbh) {
     ui_.rect(option.x, y + 120, bw, 42, 0.96f, 0.96f, 0.96f);
     ui_.frame(option.x, y + 120, bw, 42, 2, 0.08f, 0.12f, 0.17f);
     uiText(option.label, option.x + (bw - font_.textWidth(option.label, 14)) / 2, y + 133, 14, 0.15f, 0.2f, 0.28f);
-    if (clicked && buttonHit(mx, my, option.x, y + 120, bw, 42)) {
+    if (clicked && !clickConsumed_ && buttonHit(mx, my, option.x, y + 120, bw, 42)) {
+      clickConsumed_ = true;
       confirmExit_ = false;
       if (std::strcmp(option.label, "Salvar") == 0) {
         if (!filePath_.empty()) {
@@ -1538,7 +1726,6 @@ void EditorApp::drawConfirmExit(int fbw, int fbh) {
       // "Cancelar" só fecha o modal.
     }
   }
-  wasDown = down;
 }
 
 }  // namespace loomia

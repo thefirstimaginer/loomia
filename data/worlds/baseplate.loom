@@ -331,13 +331,13 @@
     {
       "position": [
         -14,
-        3.5,
-        1.5
+        5,
+        2
       ],
       "size": [
         6,
         1,
-        4
+        5
       ],
       "color": [
         130,
@@ -1151,150 +1151,6 @@
         45
       ],
       "material": "grass"
-    },
-    {
-      "position": [
-        32,
-        0.5,
-        -5
-      ],
-      "size": [
-        1,
-        1,
-        1
-      ],
-      "color": [
-        110,
-        80,
-        190
-      ],
-      "material": "stone"
-    },
-    {
-      "position": [
-        32,
-        0.5,
-        -5
-      ],
-      "size": [
-        1,
-        1,
-        1
-      ],
-      "color": [
-        110,
-        80,
-        190
-      ],
-      "material": "stone"
-    },
-    {
-      "position": [
-        32,
-        0.5,
-        -5
-      ],
-      "size": [
-        1,
-        1,
-        1
-      ],
-      "color": [
-        110,
-        80,
-        190
-      ],
-      "material": "stone"
-    },
-    {
-      "position": [
-        31,
-        0.5,
-        -5
-      ],
-      "size": [
-        1,
-        1,
-        1
-      ],
-      "color": [
-        110,
-        80,
-        190
-      ],
-      "material": "stone"
-    },
-    {
-      "position": [
-        30,
-        0.5,
-        -5
-      ],
-      "size": [
-        1,
-        1,
-        1
-      ],
-      "color": [
-        110,
-        80,
-        190
-      ],
-      "material": "stone"
-    },
-    {
-      "position": [
-        30,
-        0.5,
-        -5
-      ],
-      "size": [
-        1,
-        1,
-        1
-      ],
-      "color": [
-        110,
-        80,
-        190
-      ],
-      "material": "stone"
-    },
-    {
-      "position": [
-        29,
-        0.5,
-        -5
-      ],
-      "size": [
-        1,
-        1,
-        1
-      ],
-      "color": [
-        110,
-        80,
-        190
-      ],
-      "material": "stone"
-    },
-    {
-      "position": [
-        28,
-        0.5,
-        -5
-      ],
-      "size": [
-        1,
-        1,
-        1
-      ],
-      "color": [
-        110,
-        80,
-        190
-      ],
-      "material": "stone"
     }
   ],
   "version": 1
