@@ -15,8 +15,12 @@ bool EditorApp::updateGizmoTryPick(double mx, double my) {
   const Block& block = world_.blocks[static_cast<size_t>(selected_)];
 
   const Vec3 axes[3] = {{1, 0, 0}, {0, 1, 0}, {0, 0, 1}};
-  const float gap = std::max(0.5f, std::max({block.size.x, block.size.y, block.size.z}) * 0.08f);
-  const float cube = std::min(0.45f, gap * 0.5f) * 1.35f;
+  // Tamanho do gizmo proporcional à distância da câmera: na tela o minicubo
+  // fica sempre com o mesmo tamanho (antes, longe do objeto ele encolhia
+  // alguns pixels e ficava impossível de clicar).
+  const float gizmoScale = std::max(0.6f, camDist_ * 0.035f);
+  const float gap = gizmoScale * 0.9f;
+  const float cube = gizmoScale * 0.55f;
 
   const Vec3 eye{
       camTarget_.x + camDist_ * std::cos(camPitch_) * std::sin(camYaw_),
@@ -49,7 +53,36 @@ bool EditorApp::updateGizmoTryPick(double mx, double my) {
       }
     }
   }
-  if (bestAxis < 0) return false;
+  // Fallback em espaço de tela: projeta o centro de cada minicubo e aceita o
+  // clique dentro de um raio de pixels — cobre ângulos em que o raio passa
+  // raspando (o "às vezes funciona, às vezes não").
+  if (bestAxis < 0) {
+    float bestPx = 14.f;  // raio de tolerância
+    int bestScreen = -1;
+    for (int axis = 0; axis < 3; ++axis) {
+      for (int sign = -1; sign <= 1; sign += 2) {
+        const float half = (axis == 0 ? block.size.x : axis == 1 ? block.size.y : block.size.z) / 2.f;
+        const float center = sign * (half + gap + cube / 2.f);
+        Vec3 c = block.position;
+        if (axis == 0) c.x += center;
+        if (axis == 1) c.y += center;
+        if (axis == 2) c.z += center;
+        Vec3 toCube = c - eye;
+        const float depth = dot(toCube, forward);
+        if (depth <= 0.1f) continue;
+        const Vec3 onPlane = mul(forward, depth);
+        const Vec3 flat = toCube - onPlane;
+        const float sx = fbw_ / 2.f + (dot(flat, right) / (depth * tanHalf * aspect)) * (fbw_ / 2.f);
+        const float sy = fbh_ / 2.f - (dot(flat, up) / (depth * tanHalf)) * (fbh_ / 2.f);
+        const float distPx = std::hypot(static_cast<float>(mx) - sx, static_cast<float>(my) - sy);
+        if (distPx < bestPx) { bestPx = distPx; bestScreen = axis; }
+      }
+    }
+    if (bestScreen < 0) return false;
+    bestAxis = bestScreen;
+    // Distância de arrasto: profundidade do centro do bloco (estável).
+    bestT = dot(block.position - eye, forward);
+  }
 
   gizmoDragging_ = true;
   gizmoAxis_ = bestAxis;

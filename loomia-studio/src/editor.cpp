@@ -549,7 +549,8 @@ EditorResult EditorApp::run() {
     updateCamera(dt);
 
     // ---------- interação com a viewport (botão esquerdo)
-    if (inEditor_) {
+    // Modal aberto captura tudo: nenhum clique chega à viewport/3D.
+    if (inEditor_ && !confirmExit_) {
       double mx, my;
       glfwGetCursorPos(window_, &mx, &my);
       const bool inViewport = my > UI_BAR_H && my < (fbh_ - UI_STATUS_H);
@@ -700,21 +701,21 @@ EditorResult EditorApp::run() {
         transform = transform * Mat4::scale(block.size * 1.08f);
         renderer_.drawBox(camera, aspect, transform, index == selected_ ? Color3{255, 255, 255} : Color3{200, 220, 255}, true);
       }
-      // Gizmos: 1 minicubo em cada face do bloco (6 alças). A cor do cubo
-      // indica o eixo da face (vermelho=X, verde=Y, azul=Z). Arrastar um
-      // minicubo move (ferramenta 2) ou estica/encolhe (ferramenta 3) o bloco
-      // naquele eixo, dos dois lados.
+      // Gizmos: 1 minicubo em cada face do bloco (6 alças). Cor = eixo
+      // (vermelho=X, verde=Y, azul=Z). Tamanho proporcional à distância da
+      // câmera — na tela fica constante, fácil de clicar de longe ou perto.
       if (selected_ >= 0 && (tool_ == 2 || tool_ == 3)) {
         const Block& block = world_.blocks[static_cast<size_t>(selected_)];  // gizmo do bloco âncora
-        const float cubeSize = 0.34f;
-        // Faces: ±X (vermelho), ±Y (verde), ±Z (azul).
+        const float gizmoScale = std::max(0.6f, camDist_ * 0.035f);
+        const float gap = gizmoScale * 0.9f;
+        const float cubeSize = gizmoScale * 0.55f;
         const Color3 axisColor[3] = {{220, 60, 60}, {70, 200, 80}, {70, 110, 230}};
         for (int axis = 0; axis < 3; ++axis) {
           for (int sign = -1; sign <= 1; sign += 2) {
             Vec3 offset{0, 0, 0};
-            if (axis == 0) offset.x = sign * (block.size.x / 2.f + cubeSize / 2.f);
-            if (axis == 1) offset.y = sign * (block.size.y / 2.f + cubeSize / 2.f);
-            if (axis == 2) offset.z = sign * (block.size.z / 2.f + cubeSize / 2.f);
+            if (axis == 0) offset.x = sign * (block.size.x / 2.f + gap + cubeSize / 2.f);
+            if (axis == 1) offset.y = sign * (block.size.y / 2.f + gap + cubeSize / 2.f);
+            if (axis == 2) offset.z = sign * (block.size.z / 2.f + gap + cubeSize / 2.f);
             Mat4 transform = Mat4::translation(block.position + offset);
             transform = transform * Mat4::scale({cubeSize, cubeSize, cubeSize});
             const bool active = gizmoDragging_ && gizmoAxis_ == axis;
