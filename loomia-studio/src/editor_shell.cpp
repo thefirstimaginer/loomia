@@ -1,0 +1,438 @@
+// Shell do editor — redesign: topbar com ícones, rail de ferramentas à
+// esquerda, viewport central, hierarquia + propriedades à direita, faixa de
+// recursos embaixo e editor Lua integrado. Tudo deriva do tamanho real do
+// framebuffer (responsivo) e das cores do tema.
+#include "editor.h"
+
+#include <glad/glad.h>
+#include <GLFW/glfw3.h>
+
+#include <cstdio>
+#include <cmath>
+#include <cstring>
+
+namespace loomia {
+
+namespace {
+
+// Ícones simples desenhados com rects/triângulos (sem dependência externa).
+void iconSelect(UiOverlay& ui, float x, float y, float s, const Theme& th) {
+  ui.tri(x + s * 0.25f, y + s * 0.15f, x + s * 0.25f, y + s * 0.65f, x + s * 0.55f, y + s * 0.42f, th.inkR, th.inkG, th.inkB);
+  ui.tri(x + s * 0.25f, y + s * 0.15f, x + s * 0.55f, y + s * 0.42f, x + s * 0.25f, y + s * 0.42f, th.inkR, th.inkG, th.inkB);
+}
+void iconMove(UiOverlay& ui, float x, float y, float s, const Theme& th) {
+  const float c = s / 2, t = s * 0.09f;
+  ui.rect(x + c - t / 2, y + s * 0.14f, t, s * 0.72f, th.inkR, th.inkG, th.inkB);
+  ui.rect(x + s * 0.14f, y + c - t / 2, s * 0.72f, t, th.inkR, th.inkG, th.inkB);
+  ui.tri(x + c, y + s * 0.06f, x + c - s * 0.1f, y + s * 0.24f, x + c + s * 0.1f, y + s * 0.24f, th.inkR, th.inkG, th.inkB);
+  ui.tri(x + c, y + s * 0.94f, x + c - s * 0.1f, y + s * 0.76f, x + c + s * 0.1f, y + s * 0.76f, th.inkR, th.inkG, th.inkB);
+  ui.tri(x + s * 0.06f, y + c, x + s * 0.24f, y + c - s * 0.1f, x + s * 0.24f, y + c + s * 0.1f, th.inkR, th.inkG, th.inkB);
+  ui.tri(x + s * 0.94f, y + c, x + s * 0.78f, y + c - s * 0.1f, x + s * 0.78f, y + c + s * 0.1f, th.inkR, th.inkG, th.inkB);
+}
+void iconScale(UiOverlay& ui, float x, float y, float s, const Theme& th) {
+  ui.frame(x + s * 0.15f, y + s * 0.35f, s * 0.45f, s * 0.45f, s * 0.07f, th.inkR, th.inkG, th.inkB);
+  ui.rect(x + s * 0.62f, y + s * 0.12f, s * 0.09f, s * 0.6f, th.inkR, th.inkG, th.inkB);
+  ui.rect(x + s * 0.5f, y + s * 0.12f, s * 0.32f, s * 0.09f, th.inkR, th.inkG, th.inkB);
+}
+void iconPaint(UiOverlay& ui, float x, float y, float s, const Theme& th) {
+  ui.rect(x + s * 0.55f, y + s * 0.1f, s * 0.16f, s * 0.38f, th.inkR, th.inkG, th.inkB);
+  ui.tri(x + s * 0.28f, y + s * 0.68f, x + s * 0.55f, y + s * 0.42f, x + s * 0.6f, y + s * 0.72f, th.inkR, th.inkG, th.inkB);
+  ui.rect(x + s * 0.22f, y + s * 0.74f, s * 0.3f, s * 0.1f, th.inkR, th.inkG, th.inkB);
+}
+void iconErase(UiOverlay& ui, float x, float y, float s, const Theme& th) {
+  ui.frame(x + s * 0.18f, y + s * 0.3f, s * 0.64f, s * 0.4f, s * 0.06f, th.inkR, th.inkG, th.inkB);
+  ui.rect(x + s * 0.35f, y + s * 0.46f, s * 0.3f, s * 0.08f, th.inkR, th.inkG, th.inkB);
+}
+
+// Botão de ícone; devolve true no clique. `active` pinta com o accent.
+bool iconButton(UiOverlay& ui, double mx, double my, bool clicked, float x, float y, float s, bool active, const Theme& th) {
+  ui.rect(x, y, s, s, active ? th.accentR : th.panelAltR, active ? th.accentG : th.panelAltG, active ? th.accentB : th.panelAltB);
+  ui.frame(x, y, s, s, 1.f, th.lineR, th.lineG, th.lineB);
+  return clicked && mx >= x && mx <= x + s && my >= y && my <= y + s;
+}
+
+}  // namespace
+
+// ---- barra superior: menu Arquivo, ícones de arquivo/undo/Play/tema ----
+void EditorApp::drawTopbar(int fbw, int fbh, const Theme& th) {
+  const float W = static_cast<float>(fbw), H = static_cast<float>(LayoutRects{}.topbarH);
+  ui_.rect(0, 0, W, H, th.panelR, th.panelG, th.panelB);
+  ui_.rect(0, H - 1, W, 1, th.lineR, th.lineG, th.lineB);
+
+  double mx, my;
+  glfwGetCursorPos(window_, &mx, &my);
+  const bool down = glfwGetMouseButton(window_, GLFW_MOUSE_BUTTON_LEFT) == GLFW_PRESS;
+  const bool clicked = down && !mouseWasDown_;
+  if (confirmExit_) { clickConsumed_ = true; drawConfirmExit(fbw, fbh); ui_.flush(); flushText(); return; }
+
+  // Menu Arquivo
+  const float fx = 8, fy = 6, fw = 76, fh = 34;
+  ui_.rect(fx, fy, fw, fh, fileMenu_ ? th.accentR : th.panelAltR, fileMenu_ ? th.accentG : th.panelAltG, fileMenu_ ? th.accentB : th.panelAltB);
+  ui_.frame(fx, fy, fw, fh, 1, th.lineR, th.lineG, th.lineB);
+  uiText("Arquivo", fx + 12, fy + 10, 13, fileMenu_ ? th.accentTextR : th.inkR, fileMenu_ ? th.accentTextG : th.inkG, fileMenu_ ? th.accentTextB : th.inkB);
+  if (clicked && buttonHit(mx, my, fx, fy, fw, fh)) fileMenu_ = !fileMenu_;
+  if (fileMenu_) {
+    const float mw = 210;
+    float my2 = fy + fh + 2;
+    const char* items[] = {"Novo (Ctrl+N)", "Abrir .loom", "Salvar (Ctrl+S)", "Salvar como...", "Criar cópia...", "Renomear mapa", "Voltar ao início"};
+    for (int index = 0; index < 7; ++index) {
+      ui_.rect(fx, my2, mw, 26, th.panelR, th.panelG, th.panelB);
+      ui_.rect(fx, my2, mw, 1, th.lineR, th.lineG, th.lineB);
+      uiText(items[index], fx + 10, my2 + 6, 12, th.inkR, th.inkG, th.inkB);
+      if (clicked && buttonHit(mx, my, fx, my2, mw, 26)) {
+        fileMenu_ = false;
+        if (index == 0) newFromTemplate(0);
+        else if (index == 1) {
+          FILE* pipe = popen("zenity --file-selection --title='Abrir mapa .loom' 2>/dev/null | tr -d '\\n'", "r");
+          char buffer[1024] = {};
+          if (pipe && fgets(buffer, sizeof(buffer), pipe)) {
+            std::string chosen = buffer;
+            if (!chosen.empty()) { std::string err; if (!openLoom(chosen, err)) setStatus("Erro: " + err); addRecent(chosen); }
+          } else setStatus("Nenhum arquivo escolhido.");
+          if (pipe) pclose(pipe);
+        } else if (index == 2) {
+          std::string err;
+          if (!filePath_.empty()) { if (saveLoom(filePath_, err)) addRecent(filePath_); else setStatus("Erro: " + err); }
+          else if (!saveWithDialog()) setStatus("Salvamento cancelado.");
+        } else if (index == 3) { if (!saveWithDialog()) setStatus("Salvamento cancelado."); }
+        else if (index == 4) saveCopy();
+        else if (index == 5) renameMap();
+        else backToWelcome();
+      }
+      my2 += 28;
+    }
+  }
+
+  // Ícones de arquivo e edição
+  float ix = fx + fw + 12;
+  const float is = 30, iy = 6;
+  auto next = [&ix, is]() { const float r = ix; ix += is + 6; return r; };
+
+  if (iconButton(ui_, mx, my, clicked, next(), iy, is, false, th)) newFromTemplate(0);  // novo
+  ui_.frame(ix + 4, iy + 8, is - 8, is - 8, 2, th.inkR, th.inkG, th.inkB);  // ícone folha
+  ix += is + 6;
+  if (iconButton(ui_, mx, my, clicked, next(), iy, is, false, th)) {  // abrir (pasta)
+    FILE* pipe = popen("zenity --file-selection --title='Abrir mapa .loom' 2>/dev/null | tr -d '\\n'", "r");
+    char buffer[1024] = {};
+    if (pipe && fgets(buffer, sizeof(buffer), pipe)) {
+      std::string chosen = buffer;
+      if (!chosen.empty()) { std::string err; if (!openLoom(chosen, err)) setStatus("Erro: " + err); addRecent(chosen); }
+    }
+    if (pipe) pclose(pipe);
+  }
+  ui_.frame(ix - is + 4, iy + 8, is - 8, is * 0.55f, 2, th.inkR, th.inkG, th.inkB);
+  ix += is + 6;
+  if (iconButton(ui_, mx, my, clicked, next(), iy, is, false, th)) {  // salvar (disquete)
+    std::string err;
+    if (!filePath_.empty()) { if (saveLoom(filePath_, err)) addRecent(filePath_); else setStatus("Erro: " + err); }
+    else if (!saveWithDialog()) setStatus("Salvamento cancelado.");
+  }
+  ui_.frame(ix - is + 5, iy + 6, is - 10, is - 6, 2, th.inkR, th.inkG, th.inkB);
+
+  ix += 10;  // separador
+  if (iconButton(ui_, mx, my, clicked, next(), iy, is, false, th)) undo();   // undo ←
+  ui_.rect(ix - is + 8, iy + is / 2 - 1, is - 16, 2, th.inkR, th.inkG, th.inkB);
+  if (iconButton(ui_, mx, my, clicked, next(), iy, is, false, th)) redo();   // redo →
+  ui_.rect(ix - is + 8, iy + is / 2 - 1, is - 16, 2, th.inkR, th.inkG, th.inkB);
+
+  ix += 10;
+  // Play/Stop (mesmo botão: abre a janela de teste; fechar volta)
+  {
+    const bool wasPlaying = playTestOpen_;
+    if (iconButton(ui_, mx, my, clicked, next(), iy, is, wasPlaying, th)) playTestOpen_ = !playTestOpen_;
+    const float bx = ix - is + 9, by = iy + 7;
+    ui_.tri(bx, by, bx, by + is * 0.5f, bx + is * 0.55f, by + is * 0.25f, th.inkR, th.inkG, th.inkB, 1.f);
+    ui_.tri(bx, by, bx + is * 0.55f, by + is * 0.25f, bx, by + is * 0.5f, th.inkR, th.inkG, th.inkB, 1.f);
+  }
+
+  ix += 10;
+  // Tema claro/escuro (preferência do editor)
+  if (iconButton(ui_, mx, my, clicked, next(), iy, is, prefsDark_, th)) prefsDark_ = !prefsDark_;
+  if (prefsDark_) {  // lua
+    ui_.rect(ix - is + 12, iy + 7, is * 0.55f, is * 0.55f, 0.95f, 0.93f, 0.75f);
+  } else {           // sol
+    ui_.rect(ix - is + 12, iy + 12, is * 0.45f, is * 0.45f, 0.95f, 0.85f, 0.3f);
+    for (int k = 0; k < 8; ++k) {
+      const float a = k * 0.785f;
+      ui_.rect(ix - is / 2 + std::cos(a) * is * 0.42f - 1, iy + is / 2 + std::sin(a) * is * 0.42f - 1, 3, 3, 0.95f, 0.85f, 0.3f);
+    }
+  }
+
+  // Preferências no canto direito
+  {
+    const float px = W - 116, py = 6;
+    ui_.rect(px, py, 108, fh, prefsOpen_ ? th.accentR : th.panelAltR, prefsOpen_ ? th.accentG : th.panelAltG, prefsOpen_ ? th.accentB : th.panelAltB);
+    ui_.frame(px, py, 108, fh, 1, th.lineR, th.lineG, th.lineB);
+    uiText("Preferências", px + 14, py + 10, 12, prefsOpen_ ? th.accentTextR : th.inkR, prefsOpen_ ? th.accentTextG : th.inkG, prefsOpen_ ? th.accentTextB : th.inkB);
+    if (clicked && buttonHit(mx, my, px, py, 108, fh)) prefsOpen_ = !prefsOpen_;
+    if (prefsOpen_) drawPrefs(px, py + fh + 4);
+  }
+}
+
+// ---- rail vertical de ferramentas (esquerda) ----
+void EditorApp::drawToolRail(int fbw, int fbh, const Theme& th) {
+  const LayoutRects lay = layout();
+  const float x = 4, y = static_cast<float>(lay.topbarH) + 4;
+  const float s = 36, gap = 4;
+  ui_.rect(x, y, s + 8, 6 * (s + gap) + 8, th.panelR, th.panelG, th.panelB);
+  ui_.frame(x, y, s + 8, 6 * (s + gap) + 8, 1, th.lineR, th.lineG, th.lineB);
+
+  double mx, my;
+  glfwGetCursorPos(window_, &mx, &my);
+  const bool down = glfwGetMouseButton(window_, GLFW_MOUSE_BUTTON_LEFT) == GLFW_PRESS;
+  const bool clicked = down && !mouseWasDown_;
+
+  const char* names[] = {"Select", "Add", "Move", "Scale", "Paint", "Erase"};
+  // Ordem visual da referência: select, add, move, scale, paint, erase.
+  const int toolOrder[6] = {1, 0, 2, 3, 4, 5};
+  float ty = y + 4;
+  for (int entry = 0; entry < 6; ++entry) {
+    const int tool = toolOrder[entry];
+    const bool active = tool_ == tool;
+    const float bx = x + 4;
+    bool hitBtn = iconButton(ui_, mx, my, clicked, bx, ty, s, active, th);
+    switch (tool) {
+      case 1: iconSelect(ui_, bx + 4, ty + 4, s - 8, th); break;
+      case 0: ui_.rect(bx + s * 0.32f, ty + 4, s * 0.36f, s * 0.36f, th.inkR, th.inkG, th.inkB); break;  // add: bloco
+      case 2: iconMove(ui_, bx + 4, ty + 4, s - 8, th); break;
+      case 3: iconScale(ui_, bx + 4, ty + 4, s - 8, th); break;
+      case 4: iconPaint(ui_, bx + 4, ty + 4, s - 8, th); break;
+      case 5: iconErase(ui_, bx + 4, ty + 4, s - 8, th); break;
+      default: break;
+    }
+    if (hitBtn) { tool_ = tool; setStatus(std::string("Ferramenta: ") + names[tool]); }
+    ty += s + gap;
+  }
+}
+
+// ---- hierarquia (árvore de objetos) — painel direito superior ----
+void EditorApp::drawHierarchy(int fbw, int fbh, const Theme& th) {
+  const LayoutRects lay = layout();
+  const float x = static_cast<float>(fbw - lay.rightW + 2);
+  const float w = static_cast<float>(lay.rightW - 4);
+  const float h = static_cast<float>(lay.viewportH()) * 0.55f;
+  const float y = static_cast<float>(lay.topbarH) + 2;
+
+  ui_.rect(x, y, w, h, th.panelR, th.panelG, th.panelB);
+  ui_.frame(x, y, w, h, 1, th.lineR, th.lineG, th.lineB);
+  uiText("Hierarquia", x + 10, y + 8, 13, th.inkR, th.inkG, th.inkB);
+  ui_.rect(x, y + 26, w, 1, th.lineR, th.lineG, th.lineB);
+
+  double mx, my;
+  glfwGetCursorPos(window_, &mx, &my);
+  const bool down = glfwGetMouseButton(window_, GLFW_MOUSE_BUTTON_LEFT) == GLFW_PRESS;
+  const bool clicked = down && !mouseWasDown_;
+
+  float ly = y + 34;
+  const int maxShow = static_cast<int>((h - 42) / 20.f);
+  int shown = 0;
+  for (size_t index = 0; index < world_.blocks.size() && shown < maxShow; ++index, ++shown) {
+    const Block& block = world_.blocks[index];
+    const bool selected = std::find(selection_.begin(), selection_.end(), static_cast<int>(index)) != selection_.end();
+    if (selected) ui_.rect(x + 2, ly, w - 4, 18, th.selR * 0.25f, th.selG * 0.25f, th.selB * 0.25f);
+    // ícone do objeto: quadradinho da cor
+    ui_.rect(x + 10, ly + 4, 10, 10, block.color.r / 255.f, block.color.g / 255.f, block.color.b / 255.f);
+    char label[64];
+    std::snprintf(label, sizeof(label), "Part%zu", index + 1);
+    uiText(label, x + 28, ly + 4, 11, selected ? th.inkR : th.inkSoftR, selected ? th.inkG : th.inkSoftG, selected ? th.inkB : th.inkSoftB);
+    if (clicked && buttonHit(mx, my, x, ly, w, 18)) {
+      selected_ = static_cast<int>(index);
+      selection_.clear();
+      selection_.push_back(selected_);
+      setStatus("Bloco " + std::to_string(selected_) + " selecionado na hierarquia.");
+    }
+    ly += 20;
+  }
+  if (shown < static_cast<int>(world_.blocks.size())) {
+    char more[64];
+    std::snprintf(more, sizeof(more), "... +%zu objetos", world_.blocks.size() - static_cast<size_t>(shown));
+    uiText(more, x + 10, ly + 2, 11, th.inkSoftR, th.inkSoftG, th.inkSoftB);
+  }
+}
+
+// ---- propriedades do objeto selecionado (painel direito inferior) ----
+void EditorApp::drawProperties(int fbw, int fbh, const Theme& th) {
+  const LayoutRects lay = layout();
+  const float x = static_cast<float>(fbw - lay.rightW + 2);
+  const float w = static_cast<float>(lay.rightW - 4);
+  const float y = static_cast<float>(lay.topbarH) + 2 + static_cast<float>(lay.viewportH()) * 0.55f + 4;
+  const float h = static_cast<float>(lay.viewportH()) * 0.45f - 8;
+
+  ui_.rect(x, y, w, h, th.panelR, th.panelG, th.panelB);
+  ui_.frame(x, y, w, h, 1, th.lineR, th.lineG, th.lineB);
+  uiText("Propriedades", x + 10, y + 8, 13, th.inkR, th.inkG, th.inkB);
+  ui_.rect(x, y + 26, w, 1, th.lineR, th.lineG, th.lineB);
+
+  if (selected_ < 0 || selected_ >= static_cast<int>(world_.blocks.size())) {
+    uiText("Nenhum objeto selecionado.", x + 10, y + 38, 11, th.inkSoftR, th.inkSoftG, th.inkSoftB);
+    return;
+  }
+  Block& block = world_.blocks[static_cast<size_t>(selected_)];
+
+  double mx, my;
+  glfwGetCursorPos(window_, &mx, &my);
+  const bool down = glfwGetMouseButton(window_, GLFW_MOUSE_BUTTON_LEFT) == GLFW_PRESS;
+
+  char line[128];
+  float ly = y + 34;
+  auto row = [&](const char* label, float value, bool editable, int axis) {
+    uiText(label, x + 10, ly, 11, th.inkSoftR, th.inkSoftG, th.inkSoftB);
+    char valueText[32];
+    std::snprintf(valueText, sizeof(valueText), "%.2f", value);
+    uiText(valueText, x + 110, ly, 11, th.inkR, th.inkG, th.inkB);
+    return ly;
+  };
+  (void)row;
+
+  std::snprintf(line, sizeof(line), "Pos  %.1f  %.1f  %.1f", block.position.x, block.position.y, block.position.z);
+  uiText(line, x + 10, ly, 11, th.inkR, th.inkG, th.inkB);
+  ly += 18;
+  std::snprintf(line, sizeof(line), "Tam  %.1f  %.1f  %.1f", block.size.x, block.size.y, block.size.z);
+  uiText(line, x + 10, ly, 11, th.inkR, th.inkG, th.inkB);
+  ly += 18;
+
+  // Cor: 10 swatches rápidos
+  const unsigned char palette[][3] = {
+      {230, 120, 60}, {230, 190, 40}, {100, 160, 60}, {70, 150, 200}, {110, 80, 190},
+      {230, 230, 235}, {70, 70, 80}, {190, 60, 60}, {240, 160, 200}, {60, 200, 170}};
+  uiText("Cor", x + 10, ly, 11, th.inkSoftR, th.inkSoftG, th.inkSoftB);
+  ly += 16;
+  for (int index = 0; index < 10; ++index) {
+    const float sx = x + 10 + index * 22.f;
+    ui_.rect(sx, ly, 18, 18, palette[index][0] / 255.f, palette[index][1] / 255.f, palette[index][2] / 255.f);
+    ui_.frame(sx, ly, 18, 18, 1, th.lineR, th.lineG, th.lineB);
+    if (down && mx > sx && mx < sx + 18 && my > ly && my < ly + 18) {
+      pushUndo();
+      block.color = {static_cast<float>(palette[index][0]), static_cast<float>(palette[index][1]), static_cast<float>(palette[index][2])};
+      renderer_.upload(world_);
+      markDirty();
+    }
+  }
+  ly += 26;
+
+  // Material: 6 chips
+  uiText("Material", x + 10, ly, 11, th.inkSoftR, th.inkSoftG, th.inkSoftB);
+  ly += 16;
+  const char* materials[] = {"plastic", "grass", "wood", "brick", "stone", "neon"};
+  for (int index = 0; index < 6; ++index) {
+    const float sx = x + 10 + (index % 3) * 74.f;
+    const float sy = ly + (index / 3) * 22.f;
+    const bool active = materialFromName(materials[index]) == block.material;
+    ui_.rect(sx, sy, 68, 18, active ? th.accentR : th.panelAltR, active ? th.accentG : th.panelAltG, active ? th.accentB : th.panelAltB);
+    ui_.frame(sx, sy, 68, 18, 1, th.lineR, th.lineG, th.lineB);
+    uiText(materials[index], sx + 8, sy + 4, 10, active ? th.accentTextR : th.inkSoftR, active ? th.accentTextG : th.inkSoftG, active ? th.accentTextB : th.inkSoftB);
+    if (down && mx > sx && mx < sx + 68 && my > sy && my < sy + 18) {
+      pushUndo();
+      block.material = materialFromName(materials[index]);
+      renderer_.upload(world_);
+      markDirty();
+    }
+  }
+  ly += 48;
+
+  // Colisão
+  uiText(block.collidable ? "[x] colisão" : "[ ] colisão", x + 10, ly, 11, th.inkR, th.inkG, th.inkB);
+  if (down && mx > x && mx < x + w && my > ly && my < ly + 14) {
+    pushUndo();
+    block.collidable = !block.collidable;
+    renderer_.upload(world_);
+    markDirty();
+  }
+}
+
+// ---- faixa inferior: recursos (miniaturas de materiais) + coordenadas ----
+void EditorApp::drawResourceStrip(int fbw, int fbh, const Theme& th) {
+  const LayoutRects lay = layout();
+  const float x = static_cast<float>(lay.leftW) + 2;
+  const float y = static_cast<float>(fbh - lay.bottomH);
+  const float w = static_cast<float>(lay.viewportW() - 4);
+  const float h = static_cast<float>(lay.bottomH - 2);
+
+  ui_.rect(x, y, w, h, th.panelR, th.panelG, th.panelB);
+  ui_.frame(x, y, w, h, 1, th.lineR, th.lineG, th.lineB);
+  uiText("Recursos", x + 8, y + 6, 11, th.inkSoftR, th.inkSoftG, th.inkSoftB);
+
+  double mx, my;
+  glfwGetCursorPos(window_, &mx, &my);
+  const bool down = glfwGetMouseButton(window_, GLFW_MOUSE_BUTTON_LEFT) == GLFW_PRESS;
+
+  // Miniaturas: 6 materiais + cores rápidas
+  const char* materials[] = {"plastic", "grass", "wood", "brick", "stone", "neon"};
+  for (int index = 0; index < 6; ++index) {
+    const float sx = x + 10 + index * 44.f;
+    const float sy = y + 24;
+    const bool active = currentMaterial_ == index;
+    ui_.rect(sx, sy, 38, 38, active ? th.accentR : th.panelAltR, active ? th.accentG : th.panelAltG, active ? th.accentB : th.panelAltB);
+    ui_.frame(sx, sy, 38, 38, 1, th.lineR, th.lineG, th.lineB);
+    // mini bloco 3D fake: 2 retângulos
+    ui_.rect(sx + 7, sy + 10, 24, 14, 0.6f, 0.62f, 0.66f);
+    ui_.rect(sx + 7, sy + 24, 24, 6, 0.45f, 0.47f, 0.5f);
+    uiText(materials[index], sx + 2, sy + 40, 9, th.inkSoftR, th.inkSoftG, th.inkSoftB);
+    if (down && mx > sx && mx < sx + 38 && my > sy && my < sy + 38) {
+      currentMaterial_ = index;
+      setStatus(std::string("Material do pincel: ") + materials[index]);
+    }
+  }
+
+  // Bloco atual (cor/tamanho) + coordenadas do objeto selecionado
+  const float infoX = x + 300.f;
+  char info[160];
+  if (selected_ >= 0 && selected_ < static_cast<int>(world_.blocks.size())) {
+    const Block& block = world_.blocks[static_cast<size_t>(selected_)];
+    std::snprintf(info, sizeof(info),
+                  "Selecionado #%d  pos(%.1f, %.1f, %.1f)  tam(%.1f, %.1f, %.1f)",
+                  selected_, block.position.x, block.position.y, block.position.z, block.size.x, block.size.y, block.size.z);
+  } else {
+    std::snprintf(info, sizeof(info), "Nada selecionado — pincel: cor(%d,%d,%d) tam(%.1f,%.1f,%.1f)",
+                  currentColor_[0], currentColor_[1], currentColor_[2], currentSize_[0], currentSize_[1], currentSize_[2]);
+  }
+  uiText(info, infoX, y + 10, 11, th.inkR, th.inkG, th.inkB);
+
+  // Cor atual + swatch grande
+  ui_.rect(infoX, y + 30, 26, 26, currentColor_[0] / 255.f, currentColor_[1] / 255.f, currentColor_[2] / 255.f);
+  ui_.frame(infoX, y + 30, 26, 26, 1, th.lineR, th.lineG, th.lineB);
+  char sizeText[64];
+  std::snprintf(sizeText, sizeof(sizeText), "tam pincel %.1f x %.1f x %.1f", currentSize_[0], currentSize_[1], currentSize_[2]);
+  uiText(sizeText, infoX + 36, y + 36, 11, th.inkSoftR, th.inkSoftG, th.inkSoftB);
+}
+
+// ---- moldura do viewport (fundo, grid, borda) — a cena 3D é desenhada ----
+// pelo loop principal dentro dessa área.
+void EditorApp::drawViewportFrame(int fbw, int fbh, const Theme& th) {
+  const LayoutRects lay = layout();
+  const float x = static_cast<float>(lay.viewportX());
+  const float y = static_cast<float>(lay.viewportY());
+  const float w = static_cast<float>(lay.viewportW());
+  const float h = static_cast<float>(lay.viewportH());
+  ui_.frame(x, y, w, h, 1, th.lineR, th.lineG, th.lineB);
+  uiText("Viewport", x + 8, y + 6, 10, th.inkSoftR, th.inkSoftG, th.inkSoftB);
+}
+
+// ---- linha de status embaixo de tudo ----
+void EditorApp::drawStatusLine(int fbw, int fbh, const Theme& th) {
+  const float H = static_cast<float>(fbh);
+  ui_.rect(0, H - UI_STATUS_H, static_cast<float>(fbw), static_cast<float>(UI_STATUS_H), th.panelAltR, th.panelAltG, th.panelAltB);
+  ui_.rect(0, H - UI_STATUS_H, static_cast<float>(fbw), 1, th.lineR, th.lineG, th.lineB);
+  char left[256];
+  std::snprintf(left, sizeof(left), "%s %s  |  %zu objetos  |  %s",
+                dirty_ ? "*" : " ",
+                filePath_.empty() ? "(sem título)" : filePath_.c_str(),
+                world_.blocks.size(), status_.c_str());
+  uiText(left, 10, H - UI_STATUS_H + 6, 12, th.inkR, th.inkG, th.inkB);
+}
+
+// ---- editor Lua integrado (aba Scripts): código + console ----
+void EditorApp::drawLuaEditor(int fbw, int fbh, const Theme& th) {
+  // A sidebar da aba Scripts (drawScriptsPanel) mostra a lista; aqui fica o
+  // console de saída na faixa inferior quando um script está aberto.
+  if (luaEditorScript_ < 0 || luaEditorScript_ >= static_cast<int>(loomDoc_.scripts.size())) return;
+  const LayoutRects lay = layout();
+  const float x = static_cast<float>(lay.leftW) + 2;
+  const float y = static_cast<float>(fbh - lay.bottomH);
+  const float w = static_cast<float>(lay.viewportW() - 4);
+  ui_.rect(x, y + 2, w, 40, th.panelAltR, th.panelAltG, th.panelAltB);
+  uiText("console:", x + 8, y + 8, 10, th.inkSoftR, th.inkSoftG, th.inkSoftB);
+  uiText(luaConsole_.empty() ? "(sem saída)" : luaConsole_, x + 60, y + 8, 10, th.inkR, th.inkG, th.inkB);
+}
+
+}  // namespace loomia

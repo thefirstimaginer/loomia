@@ -48,7 +48,7 @@ export function DownloadPage() {
               Abra o <strong>AppImage</strong> uma vez (ele fica na bandeja).
             </li>
             <li>
-              Aqui no site, entre na sua conta e escolha um mundo em <Link to="/explorar">Explorar Mundos</Link>.
+              Aqui no site, entre na sua conta e escolha um mundo em <Link to="explore">Explorar Mundos</Link>.
             </li>
             <li>
               Clique em <strong>Entrar no mundo</strong> — o navegador abre o link <code>loomia://</code> e o jogo

@@ -17,6 +17,7 @@ add_executable(loomia-studio
   src/editor_actions.cpp
   src/editor_gizmo.cpp
   src/editor_scripts.cpp
+  src/editor_shell.cpp
   src/editor_play.cpp
   src/font.cpp
   src/loom_format.cpp

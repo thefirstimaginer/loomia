@@ -115,7 +115,7 @@ function ProfileContent({
           </div>
         </div>
         <div className="profile-actions">
-          <Link to="/explorar" className="launch-button">
+          <Link to="/explore" className="launch-button">
             ▶ EXPLORAR MUNDOS
           </Link>
           <Link to="/club" className="ghost-button">

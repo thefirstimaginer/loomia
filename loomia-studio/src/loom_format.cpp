@@ -315,15 +315,24 @@ bool loadLoom(const std::string& path, LoomDocument& doc, std::vector<LoomIssue>
     return false;
   }
 
-  // Compatibilidade de versão.
+  // Compatibilidade de versão. O formato LEGADO também escrevia
+  // "version": 1 — por isso aqui exigimos que um v1 de verdade tenha
+  // "objects"; arquivos só com "blocks" caem na migração do loadLoomAny.
   const std::string format = root->str("format", "loom");
   if (format != "loom") {
     error = "formato não suportado: '" + format + "' (esperado 'loom')";
     return false;
   }
+  const bool hasObjects = root->get("objects") && root->get("objects")->isArray();
+  const bool hasLegacyBlocks = root->get("blocks") && root->get("blocks")->isArray();
   const double version = root->num("version", 0);
   if (version != 1) {
-    error = "versão " + std::to_string(version) + " não suportada — este arquivo precisa de uma versão mais nova do Loomia";
+    error = "versão " + std::to_string(version) +
+            " não suportada — este arquivo precisa de uma versão mais nova do Loomia";
+    return false;
+  }
+  if (hasLegacyBlocks && !hasObjects) {
+    error = "legado";  // sinal para o loadLoomAny migrar
     return false;
   }
 
@@ -431,12 +440,13 @@ bool loadLoomAny(const std::string& path, LoomDocument& doc, std::vector<LoomIss
   // Tenta v1 primeiro.
   if (loadLoom(path, doc, issues, error)) return true;
 
-  // Detecta formato legado (tem "blocks" e não tem "objects").
+  // Detecta formato legado (tem "blocks" e não tem "objects"); ou erro real do v1.
   std::ifstream file(path);
   std::stringstream buffer;
   buffer << file.rdbuf();
   const std::string text = buffer.str();
-  if (text.find("\"blocks\"") == std::string::npos) return false;  // erro real do v1
+  const bool legacySignal = error == "legado";
+  if (!legacySignal && text.find("\"blocks\"") == std::string::npos) return false;  // erro real do v1
 
   World legacy;
   std::string legacyError;

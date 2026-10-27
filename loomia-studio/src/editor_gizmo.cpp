@@ -26,9 +26,13 @@ bool EditorApp::updateGizmoTryPick(double mx, double my) {
       camTarget_.x + camDist_ * std::cos(camPitch_) * std::sin(camYaw_),
       camTarget_.y + camDist_ * std::sin(camPitch_),
       camTarget_.z + camDist_ * std::cos(camPitch_) * std::cos(camYaw_)};
-  const float aspect = static_cast<float>(fbw_) / static_cast<float>(fbh_ > 0 ? fbh_ : 1);
-  const float ndcX = static_cast<float>(mx) / fbw_ * 2.f - 1.f;
-  const float ndcY = 1.f - static_cast<float>(my) / fbh_ * 2.f;
+  const LayoutRects lay = layout();
+  const float vw = static_cast<float>(lay.viewportW()), vh = static_cast<float>(lay.viewportH());
+  const float localX = static_cast<float>(mx - lay.viewportX());
+  const float localY = static_cast<float>(my - lay.viewportY());
+  const float aspect = vw / (vh > 0 ? vh : 1);
+  const float ndcX = localX / vw * 2.f - 1.f;
+  const float ndcY = 1.f - localY / vh * 2.f;
   const float tanHalf = std::tan(radians(35.f));
   Vec3 forward = normalize(sub(camTarget_, eye));
   Vec3 right = normalize(cross(forward, {0, 1, 0}));

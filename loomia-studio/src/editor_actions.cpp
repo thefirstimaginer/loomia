@@ -60,10 +60,12 @@ bool EditorApp::openLoom(const std::string& path, std::string& error) {
 }
 
 bool EditorApp::saveLoom(const std::string& path, std::string& error) {
-  if (!saveWorld(path, world_, error)) return false;
+  // Sempre salva no formato v1, preservando scripts/lógica carregados.
+  loomDoc_ = worldToLoom(world_);
+  if (!saveLoomV1(path, loomDoc_, error)) return false;
   filePath_ = path;
   dirty_ = false;
-  setStatus("Salvo em " + path);
+  setStatus("Salvo em " + path + " (.loom v1)");
   return true;
 }
 

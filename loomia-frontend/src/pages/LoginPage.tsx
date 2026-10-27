@@ -19,7 +19,7 @@ export function LoginPage({ onDone }: { onDone: (path: string) => void }) {
     try {
       const result = await api.login({ login: login.trim(), password })
       setSession(result.user, result.avatars)
-      onDone(result.hasAvatar ? '/explorar' : '/boas-vindas')
+      onDone(result.hasAvatar ? '/explore' : '/boas-vindas')
     } catch (problem) {
       setError(problem instanceof Error ? problem.message : 'Não foi possível entrar.')
     } finally {

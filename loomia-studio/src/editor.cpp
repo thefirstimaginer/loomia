@@ -294,6 +294,7 @@ bool EditorApp::initWindow(std::string& error) {
   glfwWindowHint(GLFW_OPENGL_FORWARD_COMPAT, GLFW_TRUE);
 
   window_ = glfwCreateWindow(WINDOW_W, WINDOW_H, "Loomia Studio", nullptr, nullptr);
+  glfwSetWindowSizeLimits(window_, MIN_WINDOW_W, MIN_WINDOW_H, GLFW_DONT_CARE, GLFW_DONT_CARE);
   if (!window_) {
     error = "não consegui criar a janela OpenGL 3.3 (a GPU suporta?)";
     glfwTerminate();
@@ -419,18 +420,21 @@ void EditorApp::updateCamera(float dt) {
 
 RayHit EditorApp::pickBlock(double mouseX, double mouseY, int fbw, int fbh) {
   RayHit result;
-  // Constrói o raio da câmera para o pixel.
+  // O raio é construído no espaço do VIEWPORT (painéis não fazem parte).
+  const LayoutRects lay = layout();
+  const float vw = static_cast<float>(lay.viewportW()), vh = static_cast<float>(lay.viewportH());
+  const double localX = mouseX - lay.viewportX();
+  const double localY = mouseY - lay.viewportY();
   const Vec3 eye{
       camTarget_.x + camDist_ * std::cos(camPitch_) * std::sin(camYaw_),
       camTarget_.y + camDist_ * std::sin(camPitch_),
       camTarget_.z + camDist_ * std::cos(camPitch_) * std::cos(camYaw_)};
   const Mat4 view = Mat4::lookAt(eye, camTarget_, {0, 1, 0});
-  const float aspect = static_cast<float>(fbw) / static_cast<float>(fbh > 0 ? fbh : 1);
-  const Mat4 proj = Mat4::perspective(radians(70.f), aspect, 0.1f, 1500.f);
+  const float aspect = vw / (vh > 0 ? vh : 1);
 
   // Ponto no near plane: NDC -> mundo.
-  const float ndcX = static_cast<float>(mouseX) / fbw * 2.f - 1.f;
-  const float ndcY = 1.f - static_cast<float>(mouseY) / fbh * 2.f;
+  const float ndcX = static_cast<float>(localX) / vw * 2.f - 1.f;
+  const float ndcY = 1.f - static_cast<float>(localY) / vh * 2.f;
   const float tanHalf = std::tan(radians(35.f));
   Vec3 forward = normalize(sub(camTarget_, eye));
   Vec3 right = normalize(cross(forward, {0, 1, 0}));
@@ -554,7 +558,9 @@ EditorResult EditorApp::run() {
     if (inEditor_ && !confirmExit_) {
       double mx, my;
       glfwGetCursorPos(window_, &mx, &my);
-      const bool inViewport = my > UI_BAR_H && my < (fbh_ - UI_STATUS_H);
+      const LayoutRects layNow = layout();
+      const bool inViewport = my > layNow.viewportY() && my < layNow.viewportY() + layNow.viewportH() &&
+                              mx > layNow.viewportX() && mx < layNow.viewportX() + layNow.viewportW();
       const bool leftDown = glfwGetMouseButton(window_, GLFW_MOUSE_BUTTON_LEFT) == GLFW_PRESS;
       if (inViewport && leftDown && !dragging_ && !mouseWasDown_ && !clickConsumed_) {
         clickConsumed_ = true;
@@ -689,6 +695,18 @@ EditorResult EditorApp::run() {
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
     if (inEditor_) {
+      const LayoutRects lay = layout();
+      const int vx = lay.viewportX(), vy = lay.viewportY();
+      const int vw = lay.viewportW(), vh = lay.viewportH();
+      // A cena 3D fica SÓ no viewport central (scissor impede vazar sob os painéis).
+      glViewport(vx, fbh_ - vy - vh, vw, vh);
+      glScissor(vx, fbh_ - vy - vh, vw, vh);
+      glEnable(GL_SCISSOR_TEST);
+      glViewport(0, 0, fbw_, fbh_);  // clear do framebuffer inteiro
+      glClearColor(world_.sky.rf(), world_.sky.gf(), world_.sky.bf(), 1.f);
+      glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+      glViewport(vx, fbh_ - vy - vh, vw, vh);
+
       const Vec3 eye{
           camTarget_.x + camDist_ * std::cos(camPitch_) * std::sin(camYaw_),
           camTarget_.y + camDist_ * std::sin(camPitch_),
@@ -696,7 +714,7 @@ EditorResult EditorApp::run() {
       Camera camera;
       camera.position = eye;
       camera.target = camTarget_;
-      const float aspect = static_cast<float>(fbw_) / static_cast<float>(fbh_ > 0 ? fbh_ : 1);
+      const float aspect = static_cast<float>(vw) / static_cast<float>(vh > 0 ? vh : 1);
       renderer_.draw(camera, aspect);
 
       // Seleção: todos os blocos destacados com caixa maior semitransparente.
@@ -729,19 +747,43 @@ EditorResult EditorApp::run() {
           }
         }
       }
+      glDisable(GL_SCISSOR_TEST);
+      glViewport(0, 0, fbw_, fbh_);
     }
 
-    // ---------- UI
+    // ---------- UI — shell novo (tema + layout responsivo)
     glDisable(GL_DEPTH_TEST);
     glEnable(GL_BLEND);
     glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+    const Theme currentTheme = theme();
     if (inEditor_) {
-      drawUi(fbw_, fbh_);
-      drawSceneMenu(fbw_, fbh_);
+      // Fundo do viewport conforme tema/preferência (céu escuro = cinza neutro).
+      if (prefsDark_) {
+        glClearColor(0.13f, 0.14f, 0.17f, 1.f);
+        glClear(GL_COLOR_BUFFER_BIT);
+      }
+      // Painéis do shell (podem usar viewport/scissor — desenha antes da cena?
+      // Não: a cena já foi desenhada; os painéis cobrem as margens).
+      drawTopbar(fbw_, fbh_, currentTheme);
+      drawToolRail(fbw_, fbh_, currentTheme);
+      drawHierarchy(fbw_, fbh_, currentTheme);
+      drawProperties(fbw_, fbh_, currentTheme);
+      drawResourceStrip(fbw_, fbh_, currentTheme);
+      drawViewportFrame(fbw_, fbh_, currentTheme);
+      drawStatusLine(fbw_, fbh_, currentTheme);
+      if (activeTab_ == 1) drawLuaEditor(fbw_, fbh_, currentTheme);
+      ui_.flush();
+      flushText();
+      // Modal de alterações não salvas por cima de tudo.
+      drawConfirmExit(fbw_, fbh_);
+      ui_.flush();
+      flushText();
     } else {
-      // Prévias 3D dos templates primeiro (viewport próprio), depois a UI 2D.
+      // Welcome: prévias 3D primeiro (viewport próprio), depois a UI 2D.
       drawTemplatePreviews(fbw_, fbh_);
       drawWelcome(fbw_, fbh_);
+      ui_.flush();
+      flushText();
     }
     // Retângulo de seleção (marquee) por cima da viewport.
     if (marqueeActive_) {
@@ -752,12 +794,6 @@ EditorResult EditorApp::run() {
       ui_.rect(x0, y0, wRect, hRect, 0.2f, 0.5f, 0.95f, 0.12f);
       ui_.frame(x0, y0, wRect, hRect, 2, 0.2f, 0.5f, 0.95f, 0.9f);
     }
-    ui_.flush();
-    flushText();
-    // Modal de alterações não salvas por cima de tudo.
-    ui_.flush();
-    flushText();
-    drawConfirmExit(fbw_, fbh_);
     ui_.flush();
     flushText();
     glEnable(GL_DEPTH_TEST);

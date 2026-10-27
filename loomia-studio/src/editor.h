@@ -14,6 +14,7 @@
 #include "renderer.h"
 #include "world.h"
 #include "loom_format.h"
+#include "theme.h"
 
 #include <string>
 #include <vector>
@@ -37,7 +38,7 @@ struct UiOverlay {
 
   bool init(std::string& error);
   void destroy();
-  void tri(float x0, float y0, float x1, float y1, float x2, float y2, float r, float g, float b, float a);
+  void tri(float x0, float y0, float x1, float y1, float x2, float y2, float r, float g, float b, float a = 1.0f);
   void rect(float x, float y, float w, float h, float r, float g, float b, float a = 1.0f);
   void frame(float x, float y, float w, float h, float t, float r, float g, float b, float a = 1.0f);
   void text(const std::string& str, float x, float y, float cell, float r, float g, float b, float a = 1.0f);
@@ -137,6 +138,30 @@ class EditorApp {
 
   WorldRenderer previewRenderer_;
   bool previewReady_ = false;
+
+  // Tema e layout responsivo (fix 1 e 2)
+  Theme theme() const { return prefsDark_ ? Theme::dark() : Theme::light(); }
+  LayoutRects layout() const {
+    LayoutRects r;
+    r.fbw = fbw_;
+    r.fbh = fbh_;
+    r.rightW = sidebarWidth_;
+    return r;
+  }
+
+  // ---- editor_shell.cpp (redesign 3D) ----
+  void drawTopbar(int fbw, int fbh, const Theme& th);
+  void drawToolRail(int fbw, int fbh, const Theme& th);
+  void drawHierarchy(int fbw, int fbh, const Theme& th);
+  void drawProperties(int fbw, int fbh, const Theme& th);
+  void drawResourceStrip(int fbw, int fbh, const Theme& th);
+  void drawViewportFrame(int fbw, int fbh, const Theme& th);
+  void drawStatusLine(int fbw, int fbh, const Theme& th);
+
+  // Editor Lua integrado (abas de script + realce + console)
+  int luaEditorScript_ = -1;      // índice do script aberto (-1 nenhum)
+  std::string luaConsole_;
+  void drawLuaEditor(int fbw, int fbh, const Theme& th);
 
   // ---- editor.cpp ----
   bool initWindow(std::string& error);
