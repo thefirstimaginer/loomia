@@ -18,6 +18,11 @@ add_executable(loomia-studio
   src/editor_gizmo.cpp
   src/editor_scripts.cpp
   src/editor_shell.cpp
+  src/png_loader.cpp
+  src/icon_atlas.cpp
+  src/editor_lua.cpp
+  src/editor_lua.cpp
+  src/editor_testplay.cpp
   src/editor_play.cpp
   src/font.cpp
   src/loom_format.cpp
@@ -44,7 +49,7 @@ else()
   set(GLFW_LIB glfw)
 endif()
 
-target_link_libraries(loomia-studio PRIVATE OpenGL::GL Freetype::Freetype glfw dl)
+target_link_libraries(loomia-studio PRIVATE OpenGL::GL Freetype::Freetype glfw dl z)
 
 if(UNIX AND NOT APPLE)
   target_compile_options(loomia-studio PRIVATE -Wall -Wextra)

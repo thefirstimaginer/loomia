@@ -58,6 +58,16 @@ void iconAdd(UiOverlay& ui, float x, float y, float s, const Theme& th) {
   ui.rect(x + s*0.63f, y + s*0.42f, s*0.16f, s*0.38f, th.inkR*0.6f, th.inkG*0.6f, th.inkB*0.6f);
 }
 
+// Desenha o ícone PNG do atlas (se existir); senão cai no glifo vetorial.
+void drawIcon(UiOverlay& ui, const IconAtlas& icons, const char* name, float x, float y, float s, const Theme& th) {
+  if (icons.ready() && icons.has(name)) {
+    ui.flush();          // o ícone desenha imediatamente (shader próprio)
+    icons.draw(ui, name, x, y, s);
+    return;
+  }
+  ui.rect(x, y, s, s, th.panelAltR, th.panelAltG, th.panelAltB);  // placeholder
+}
+
 bool iconButton(UiOverlay& ui, double mx, double my, bool clicked, float x, float y, float s, bool active, const Theme& th) {
   ui.rect(x, y, s, s, active ? th.accentR : th.panelAltR, active ? th.accentG : th.panelAltG, active ? th.accentB : th.panelAltB);
   ui.frame(x, y, s, s, 1.f, th.lineR, th.lineG, th.lineB);
@@ -205,6 +215,8 @@ void EditorApp::drawToolRail(int fbw, int fbh, const Theme& th) {
     const bool active = tool_ == tool;
     const float bx = x + 4;
     bool hitBtn = iconButton(ui_, mx, my, clicked, bx, ty, s, active, th);
+    const char* iconNames[] = {"add", "select", "move", "scale", "paint", "erase"};
+    drawIcon(ui_, icons_, iconNames[tool], bx, ty, s, th);
     switch (tool) {
       case 1: iconSelect(ui_, bx + 4, ty + 4, s - 8, th); break;
       case 0: ui_.rect(bx + s * 0.32f, ty + 4, s * 0.36f, s * 0.36f, th.inkR, th.inkG, th.inkB); break;  // add: bloco

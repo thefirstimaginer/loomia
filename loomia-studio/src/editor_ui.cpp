@@ -530,42 +530,68 @@ void EditorApp::hslToRgb(float h, float s, float v, float out[3]) const {
   out[0] = r * 255; out[1] = g * 255; out[2] = b * 255;
 }
 
-// Preferências do editor: aparência/comportamento apenas do editor — nunca
-// altera o mapa nem o jogo.
+// Preferências do editor — popup expandido: aparência, câmera, gizmos,
+// comportamento da interface. Nunca altera o mapa nem o jogo.
 void EditorApp::drawPrefs(float x, float y) {
-  const float w = 260.f, h = 148.f;
-  ui_.rect(x, y, w, h, 1.f, 1.f, 1.f);
-  ui_.frame(x, y, w, h, 3, 0.08f, 0.12f, 0.17f);
-  uiText("Preferências do Editor", x + 14, y + 12, 14, 0.08f, 0.12f, 0.17f);
+  const float w = 320.f, h = 320.f;
+  ui_.rect(x, y, w, h, th_.panelR, th_.panelG, th_.panelB);
+  ui_.frame(x, y, w, h, 2, th_.lineR, th_.lineG, th_.lineB);
+  uiText("Preferências do Editor", x + 14, y + 12, 15, th_.inkR, th_.inkG, th_.inkB);
+  ui_.rect(x, y + 32, w, 1, th_.lineR, th_.lineG, th_.lineB);
 
   double mx, my;
   glfwGetCursorPos(window_, &mx, &my);
   const bool down = glfwGetMouseButton(window_, GLFW_MOUSE_BUTTON_LEFT) == GLFW_PRESS;
   const bool clicked = down && !mouseWasDown_;
 
-  // Toggle: snap ao criar
-  const char* snapLabel = prefsSnapAlways_ ? "[x] snap ao criar blocos" : "[ ] snap ao criar blocos";
-  uiText(snapLabel, x + 14, y + 40, 12, 0.3f, 0.35f, 0.42f);
-  if (clicked && buttonHit(mx, my, x + 10, y + 36, w - 20, 18.f)) prefsSnapAlways_ = !prefsSnapAlways_;
+  float ly = y + 44;
+  auto toggle = [&](const char* label, bool& value) {
+    uiText(value ? std::string("[x] ") + label : std::string("[ ] ") + label, x + 14, ly, 12, th_.inkR, th_.inkG, th_.inkB);
+    if (clicked && buttonHit(mx, my, x + 10, ly - 3, w - 20, 18)) value = !value;
+    ly += 22;
+  };
 
-  // Toggle: viewport com céu escuro (apenas visual do editor)
-  const char* darkLabel = prefsDark_ ? "[x] céu escuro no editor" : "[ ] céu escuro no editor";
-  uiText(darkLabel, x + 14, y + 62, 12, 0.3f, 0.35f, 0.42f);
-  if (clicked && buttonHit(mx, my, x + 10, y + 58, w - 20, 18.f)) prefsDark_ = !prefsDark_;
+  uiText("Aparência", x + 14, ly, 11, th_.inkSoftR, th_.inkSoftG, th_.inkSoftB);
+  ly += 18;
+  toggle("tema escuro da interface", prefsDark_);
+  toggle("grade visível no viewport", prefsShowGrid_);
 
-  // Sidebar: largura
+  uiText("Edição", x + 14, ly, 11, th_.inkSoftR, th_.inkSoftG, th_.inkSoftB);
+  ly += 18;
+  toggle("snap ao criar blocos", prefsSnapAlways_);
+  toggle("mostrar gizmos de face", prefsShowGizmos_);
+
+  uiText("Câmera", x + 14, ly, 11, th_.inkSoftR, th_.inkSoftG, th_.inkSoftB);
+  ly += 18;
+  toggle("inverter eixo da órbita", prefsInvertOrbit_);
+
   char label[64];
-  std::snprintf(label, sizeof(label), "sidebar: %d px", sidebarWidth_);
-  uiText(label, x + 14, y + 84, 12, 0.3f, 0.35f, 0.42f);
-  ui_.rect(x + 14, y + 102, w - 28, 10, 0.9f, 0.92f, 0.95f);
-  ui_.rect(x + 14 + (sidebarWidth_ - 140) * (w - 28) / 260.f, y + 100, 12, 14, 0.2f, 0.45f, 0.85f);
-  if (down && my > y + 98 && my < y + 118 && mx > x + 14 && mx < x + w - 14) {
+  std::snprintf(label, sizeof(label), "largura do painel direito: %d px", sidebarWidth_);
+  uiText(label, x + 14, ly, 12, th_.inkR, th_.inkG, th_.inkB);
+  ly += 16;
+  ui_.rect(x + 14, ly, w - 28, 10, th_.panelAltR, th_.panelAltG, th_.panelAltB);
+  ui_.rect(x + 14 + (sidebarWidth_ - 180) * (w - 28) / 420.f, ly - 2, 12, 14, th_.selR, th_.selG, th_.selB);
+  if (down && my > ly - 4 && my < ly + 18 && mx > x + 14 && mx < x + w - 14) {
     const float t = std::clamp(static_cast<float>((mx - x - 14) / (w - 28)), 0.f, 1.f);
-    sidebarWidth_ = 140 + static_cast<int>(t * 260);
+    sidebarWidth_ = 180 + static_cast<int>(t * 420);
   }
+  ly += 26;
 
-  // Nota
-  uiText("Essas opções não afetam o mapa.", x + 14, y + 126, 11, 0.55f, 0.6f, 0.65f);
+  std::snprintf(label, sizeof(label), "sensibilidade da órbita: %.2f", prefsOrbitSpeed_);
+  uiText(label, x + 14, ly, 12, th_.inkR, th_.inkG, th_.inkB);
+  ly += 16;
+  ui_.rect(x + 14, ly, w - 28, 10, th_.panelAltR, th_.panelAltG, th_.panelAltB);
+  const float handle = std::clamp((prefsOrbitSpeed_ - 0.2f) / 1.8f, 0.f, 1.f);
+  ui_.rect(x + 14 + handle * (w - 40), ly - 2, 12, 14, th_.selR, th_.selG, th_.selB);
+  if (down && my > ly - 4 && my < ly + 18 && mx > x + 14 && mx < x + w - 14) {
+    const float t = std::clamp(static_cast<float>((mx - x - 14) / (w - 28)), 0.f, 1.f);
+    prefsOrbitSpeed_ = 0.2f + t * 1.8f;
+  }
+  ly += 26;
+
+  uiText("Essas opções não afetam o mapa nem o jogo.", x + 14, ly, 11, th_.inkSoftR, th_.inkSoftG, th_.inkSoftB);
+
+  if (clicked && !(mx > x && mx < x + w && my > y && my < y + h)) prefsOpen_ = false;
 }
 
 }  // namespace loomia

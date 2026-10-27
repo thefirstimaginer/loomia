@@ -15,6 +15,7 @@
 #include "world.h"
 #include "loom_format.h"
 #include "theme.h"
+#include "icon_atlas.h"
 
 #include <string>
 #include <vector>
@@ -24,6 +25,8 @@ struct GLFWwindow;
 namespace loomia {
 
 enum class EditorResult { Quit, OpenAgain };
+
+struct SimpleColliderBox { Vec3 min, max; };
 
 /** Roda o app inteiro (welcome -> editor). Bloqueia até o usuário sair. */
 EditorResult runStudio();
@@ -125,8 +128,12 @@ class EditorApp {
   int activeTab_ = 0;            // 0=Cena, 1=Scripts
   int sidebarWidth_ = 260;       // px, redimensionável
   bool prefsOpen_ = false;
-  bool prefsDark_ = false;       // preferência: fundo escuro da viewport
-  bool prefsSnapAlways_ = true;  // preferência: snap ligado ao criar
+  bool prefsDark_ = false;       // tema escuro da interface (não do mapa)
+  bool prefsSnapAlways_ = true;
+  bool prefsShowGrid_ = true;
+  bool prefsShowGizmos_ = true;
+  bool prefsInvertOrbit_ = false;
+  float prefsOrbitSpeed_ = 0.8f;
   bool playTestOpen_ = false;    // janela de teste (Play)
   bool fileMenu_ = false;
   bool colorPicker_ = false;
@@ -136,11 +143,22 @@ class EditorApp {
   bool confirmExit_ = false;
   bool exitRequested_ = false;
 
+  IconAtlas icons_;
+  std::string iconsDir_;
+
   WorldRenderer previewRenderer_;
   bool previewReady_ = false;
 
+  // mini-client de teste
+  bool testPlayActive_ = false;
+  Vec3 testPlayerPos_{0, 2, 0};
+  Vec3 testPlayerVel_{0, 0, 0};
+  bool testPlayerGrounded_ = false;
+  std::vector<SimpleColliderBox> testColliders_;
+
   // Tema e layout responsivo (fix 1 e 2)
   Theme theme() const { return prefsDark_ ? Theme::dark() : Theme::light(); }
+  Theme th_ = Theme::light();  // cache do frame para drawPrefs
   LayoutRects layout() const {
     LayoutRects r;
     r.fbw = fbw_;
@@ -162,6 +180,10 @@ class EditorApp {
   int luaEditorScript_ = -1;      // índice do script aberto (-1 nenhum)
   std::string luaConsole_;
   void drawLuaEditor(int fbw, int fbh, const Theme& th);
+  void drawLuaCodeEditor(int fbw, int fbh, const Theme& th);
+  void updateTestPlay(float dt);
+  void endTestPlay();
+  std::string luaSearch_;
 
   // ---- editor.cpp ----
   bool initWindow(std::string& error);

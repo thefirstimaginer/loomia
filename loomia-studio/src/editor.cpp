@@ -333,7 +333,7 @@ bool EditorApp::initWindow(std::string& error) {
   // funciona no build/, no AppImage e em qualquer cwd.
   std::vector<std::string> fontCandidates;
   if (const char* root = std::getenv("LOOMIA_STUDIO_ROOT")) {
-    fontCandidates.push_back(std::string(root) + "/misc/fonts/Comic_Neue/ComicNeue-Regular.ttf");
+    fontCandidates.push_back(std::string(root) + "/misc/fonts/Comic_Neue/ComicNeue-Bold.ttf");
   }
   {
     char exe[4096] = {};
@@ -344,12 +344,12 @@ bool EditorApp::initWindow(std::string& error) {
       for (int up = 0; up <= 3; ++up) {
         std::string base = exeDir;
         for (int step = 0; step < up; ++step) base += "/..";
-        fontCandidates.push_back(base + "/misc/fonts/Comic_Neue/ComicNeue-Regular.ttf");
-        fontCandidates.push_back(base + "/../misc/fonts/Comic_Neue/ComicNeue-Regular.ttf");
+        fontCandidates.push_back(base + "/misc/fonts/Comic_Neue/ComicNeue-Bold.ttf");
+        fontCandidates.push_back(base + "/../misc/fonts/Comic_Neue/ComicNeue-Bold.ttf");
       }
     }
   }
-  fontCandidates.push_back("/media/adryan/imaginedevel/Projetos/loomia/misc/fonts/Comic_Neue/ComicNeue-Regular.ttf");
+  fontCandidates.push_back("/media/adryan/imaginedevel/Projetos/loomia/misc/fonts/Comic_Neue/ComicNeue-Bold.ttf");
   for (const std::string& candidate : fontCandidates) {
     std::string fontError;
     if (font_.init(candidate, fontError)) break;
@@ -539,8 +539,9 @@ EditorResult EditorApp::run() {
       double x, y;
       glfwGetCursorPos(window_, &x, &y);
       if (!orbiting_) { orbiting_ = true; lastX_ = x; lastY_ = y; }
-      camYaw_ -= static_cast<float>(x - lastX_) * 0.008f;
-      camPitch_ = std::clamp(camPitch_ + static_cast<float>(y - lastY_) * 0.006f, -1.4f, 1.5f);
+      const float invert = prefsInvertOrbit_ ? -1.f : 1.f;
+      camYaw_ -= static_cast<float>(x - lastX_) * 0.008f * prefsOrbitSpeed_ * invert;
+      camPitch_ = std::clamp(camPitch_ + static_cast<float>(y - lastY_) * 0.006f * prefsOrbitSpeed_ * invert, -1.4f, 1.5f);
       lastX_ = x;
       lastY_ = y;
     } else {
@@ -570,7 +571,13 @@ EditorResult EditorApp::run() {
 
     // ---------- interação com a viewport (botão esquerdo)
     // Modal aberto captura tudo: nenhum clique chega à viewport/3D.
-    if (inEditor_ && !confirmExit_) {
+    // Modo teste (mini-client): Esc sai; o update roda por frame.
+    if (inEditor_ && playTestOpen_) {
+      if (keys_[256] /*ESC*/) { keys_[256] = false; endTestPlay(); }
+      updateTestPlay(dt);
+    }
+
+    if (inEditor_ && !confirmExit_ && !playTestOpen_) {
       double mx, my;
       glfwGetCursorPos(window_, &mx, &my);
       const LayoutRects layNow = layout();
@@ -713,14 +720,19 @@ EditorResult EditorApp::run() {
       const LayoutRects lay = layout();
       const int vx = lay.viewportX(), vy = lay.viewportY();
       const int vw = lay.viewportW(), vh = lay.viewportH();
-      // A cena 3D fica SÓ no viewport central (scissor impede vazar sob os painéis).
-      glViewport(vx, fbh_ - vy - vh, vw, vh);
-      glScissor(vx, fbh_ - vy - vh, vw, vh);
-      glEnable(GL_SCISSOR_TEST);
-      glViewport(0, 0, fbw_, fbh_);  // clear do framebuffer inteiro
-      glClearColor(world_.sky.rf(), world_.sky.gf(), world_.sky.bf(), 1.f);
+      // 1) limpa TODO o framebuffer com a cor de fundo do TEMA (os painéis
+      //    da UI usam essa base); o céu do mapa não aparece por fora.
+      const Theme themeNow = theme();
+      glDisable(GL_SCISSOR_TEST);
+      glViewport(0, 0, fbw_, fbh_);
+      glClearColor(themeNow.bgR, themeNow.bgG, themeNow.bgB, 1.f);
       glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+      // 2) limpa SÓ o viewport com a cor do CÉU do mapa e desenha a cena lá.
+      glEnable(GL_SCISSOR_TEST);
+      glScissor(vx, fbh_ - vy - vh, vw, vh);
       glViewport(vx, fbh_ - vy - vh, vw, vh);
+      glClearColor(world_.sky.r / 255.f, world_.sky.g / 255.f, world_.sky.b / 255.f, 1.f);
+      glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
       const Vec3 eye{
           camTarget_.x + camDist_ * std::cos(camPitch_) * std::sin(camYaw_),
@@ -743,7 +755,7 @@ EditorResult EditorApp::run() {
       // Gizmos: 1 minicubo em cada face do bloco (6 alças). Cor = eixo
       // (vermelho=X, verde=Y, azul=Z). Tamanho proporcional à distância da
       // câmera — na tela fica constante, fácil de clicar de longe ou perto.
-      if (selected_ >= 0 && (tool_ == 2 || tool_ == 3)) {
+      if (selected_ >= 0 && prefsShowGizmos_ && (tool_ == 2 || tool_ == 3)) {
         const Block& block = world_.blocks[static_cast<size_t>(selected_)];  // gizmo do bloco âncora
         const float gizmoScale = std::max(0.6f, camDist_ * 0.035f);
         const float gap = gizmoScale * 0.9f;
@@ -770,13 +782,9 @@ EditorResult EditorApp::run() {
     glDisable(GL_DEPTH_TEST);
     glEnable(GL_BLEND);
     glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-    const Theme currentTheme = theme();
+    th_ = theme();
+    const Theme& currentTheme = th_;
     if (inEditor_) {
-      // Fundo do viewport conforme tema/preferência (céu escuro = cinza neutro).
-      if (prefsDark_) {
-        glClearColor(0.13f, 0.14f, 0.17f, 1.f);
-        glClear(GL_COLOR_BUFFER_BIT);
-      }
       // Painéis do shell (podem usar viewport/scissor — desenha antes da cena?
       // Não: a cena já foi desenhada; os painéis cobrem as margens).
       drawTopbar(fbw_, fbh_, currentTheme);
@@ -786,7 +794,10 @@ EditorResult EditorApp::run() {
       drawResourceStrip(fbw_, fbh_, currentTheme);
       drawViewportFrame(fbw_, fbh_, currentTheme);
       drawStatusLine(fbw_, fbh_, currentTheme);
-      if (activeTab_ == 1) drawLuaEditor(fbw_, fbh_, currentTheme);
+      if (activeTab_ == 1) {
+        drawLuaEditor(fbw_, fbh_, currentTheme);
+        drawLuaCodeEditor(fbw_, fbh_, currentTheme);
+      }
       ui_.flush();
       flushText();
       // Modal de alterações não salvas por cima de tudo.
@@ -820,6 +831,7 @@ EditorResult EditorApp::run() {
 
   ui_.destroy();
   font_.destroy();
+  icons_.destroy();
   renderer_.destroy();
   previewRenderer_.destroy();
   previewReady_ = false;
