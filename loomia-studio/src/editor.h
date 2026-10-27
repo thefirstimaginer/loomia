@@ -121,6 +121,27 @@ class EditorApp {
   // seleção múltipla
   std::vector<int> selection_;
   bool marqueeActive_ = false;
+
+  // Hierarquia avançada
+  std::string hierarchyFilter_;       // busca
+  std::vector<bool> blockHidden_;     // oculto no viewport (render skip)
+  std::vector<bool> blockLocked_;     // bloqueado contra seleção/edição
+  std::vector<std::string> blockGroups_;  // pasta/grupo do objeto
+  int hierarchyScroll_ = 0;
+
+  void addObjectPrimitive(int shapeKind);   // 0=box 1=sphere 2=cylinder
+  void addLight();
+  void toggleHidden(int index);
+  void toggleLocked(int index);
+  void setGroup(int index, const std::string& group);
+
+  // Autosave, histórico e assets
+  void tickAutosave(float dt);
+  void addHistory(const std::string& entry);
+  void drawAssetBrowser(int fbw, int fbh, const Theme& th);
+  float autosaveTimer_ = 0.f;
+  std::vector<std::string> history_;
+  int previewAspect_ = 0;   // 0=livre 1=16:9 2=4:3 3=1:1
   float marqueeStart_[2] = {0, 0};
   float marqueeNow_[2] = {0, 0};
 
@@ -149,8 +170,9 @@ class EditorApp {
   WorldRenderer previewRenderer_;
   bool previewReady_ = false;
 
-  // mini-client de teste
+  // mini-client de teste: estados play/pausa/stop
   bool testPlayActive_ = false;
+  bool testPaused_ = false;
   Vec3 testPlayerPos_{0, 2, 0};
   Vec3 testPlayerVel_{0, 0, 0};
   bool testPlayerGrounded_ = false;
@@ -183,6 +205,9 @@ class EditorApp {
   void drawLuaCodeEditor(int fbw, int fbh, const Theme& th);
   void updateTestPlay(float dt);
   void endTestPlay();
+  void pauseTestPlay();
+  void resumeTestPlay();
+  void restartTestPlay();
   std::string luaSearch_;
 
   // ---- editor.cpp ----

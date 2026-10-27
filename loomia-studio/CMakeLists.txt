@@ -21,7 +21,11 @@ add_executable(loomia-studio
   src/png_loader.cpp
   src/icon_atlas.cpp
   src/editor_lua.cpp
+  src/editor_hierarchy.cpp
+  src/editor_assets.cpp
   src/editor_lua.cpp
+  src/editor_hierarchy.cpp
+  src/editor_assets.cpp
   src/editor_testplay.cpp
   src/editor_play.cpp
   src/font.cpp

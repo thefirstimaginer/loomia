@@ -64,7 +64,7 @@ void movePlayer(Vec3& position, Vec3& velocity, bool& grounded, const std::vecto
 // Play no próprio editor: física local + avatar. Chama por frame no lugar da
 // edição quando playTestOpen_ está ativo.
 void EditorApp::updateTestPlay(float dt) {
-  if (!playTestOpen_) return;
+  if (!playTestOpen_ || testPaused_) return;
 
   // Estado do teste (recria ao entrar).
   if (!testPlayActive_) {
@@ -111,6 +111,28 @@ void EditorApp::updateTestPlay(float dt) {
 }
 
 // Sai do modo teste (Esc).
+void EditorApp::pauseTestPlay() {
+  if (!playTestOpen_ || !testPlayActive_) return;
+  testPaused_ = true;
+  setStatus("Teste pausado — o estado do jogador foi preservado.");
+}
+
+void EditorApp::resumeTestPlay() {
+  if (!playTestOpen_ || !testPlayActive_) return;
+  testPaused_ = false;
+  setStatus("Teste retomado.");
+}
+
+void EditorApp::restartTestPlay() {
+  if (!playTestOpen_) return;
+  testPlayerPos_ = world_.spawn;
+  testPlayerVel_ = {0, 0, 0};
+  testPlayerGrounded_ = false;
+  testPaused_ = false;
+  luaConsole_ = "test: reiniciado\n";
+  setStatus("Teste reiniciado do spawn.");
+}
+
 void EditorApp::endTestPlay() {
   if (!playTestOpen_) return;
   playTestOpen_ = false;

@@ -523,6 +523,7 @@ EditorResult EditorApp::run() {
     glfwPollEvents();
     clickConsumed_ = false;
     if (uiCooldown_ > 0) --uiCooldown_;
+    tickAutosave(dt);
 
     // ---------- câmera: botão direito orbita, roda dá zoom, WASD move o alvo
     // (SÓ dentro do viewport central; com modal aberto nenhuma câmera mexe)
@@ -730,8 +731,20 @@ EditorResult EditorApp::run() {
       glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
     } else if (inEditor_) {
       const LayoutRects lay = layout();
-      const int vx = lay.viewportX(), vy = lay.viewportY();
-      const int vw = lay.viewportW(), vh = lay.viewportH();
+      int vx = lay.viewportX(), vy = lay.viewportY();
+      int vw = lay.viewportW(), vh = lay.viewportH();
+      // Pré-visualização de proporção (preferência do editor): encaixa a cena
+      // numa moldura com a proporção escolhida (livre, 16:9, 4:3, 1:1).
+      if (previewAspect_ > 0) {
+        const float ratios[] = {0.f, 16.f / 9.f, 4.f / 3.f, 1.f};
+        const float target = ratios[previewAspect_];
+        float w2 = static_cast<float>(vw), h2 = w2 / target;
+        if (h2 > vh) { h2 = static_cast<float>(vh); w2 = h2 * target; }
+        vx += (vw - static_cast<int>(w2)) / 2;
+        vy += (vh - static_cast<int>(h2)) / 2;
+        vw = static_cast<int>(w2);
+        vh = static_cast<int>(h2);
+      }
       // 1) limpa TODO o framebuffer com a cor de fundo do TEMA (os painéis
       //    da UI usam essa base); o céu do mapa não aparece por fora.
       const Theme themeNow = theme();
@@ -803,7 +816,7 @@ EditorResult EditorApp::run() {
       drawToolRail(fbw_, fbh_, currentTheme);
       drawHierarchy(fbw_, fbh_, currentTheme);
       drawProperties(fbw_, fbh_, currentTheme);
-      drawResourceStrip(fbw_, fbh_, currentTheme);
+      drawAssetBrowser(fbw_, fbh_, currentTheme);
       drawViewportFrame(fbw_, fbh_, currentTheme);
       drawStatusLine(fbw_, fbh_, currentTheme);
       if (activeTab_ == 1) {

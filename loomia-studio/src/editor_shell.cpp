@@ -181,12 +181,21 @@ void EditorApp::drawTopbar(int fbw, int fbh, const Theme& th) {
     topButton(nullptr, "refazer", bx, is + 14, false);
     if (inButton(bx, is + 14)) redo();
   }
+  // Simulação: executar / pausar / parar (estados reais do mini-client)
   {
     const float bx = next();
-    topButton(nullptr, "play", bx, is + 14, playTestOpen_);
+    topButton(nullptr, playTestOpen_ ? "parar" : "play", bx, is + 14, playTestOpen_);
     if (inButton(bx, is + 14)) {
       if (playTestOpen_) endTestPlay(); else playTestOpen_ = true;
     }
+    const float bx2 = next();
+    topButton(nullptr, testPaused_ ? "retomar" : "pausar", bx2, is + 14, testPaused_);
+    if (inButton(bx2, is + 14)) {
+      if (testPaused_) resumeTestPlay(); else pauseTestPlay();
+    }
+    const float bx3 = next();
+    topButton(nullptr, "reiniciar", bx3, is + 14, false);
+    if (inButton(bx3, is + 14)) restartTestPlay();
   }
   {
     const float bx = next();
@@ -253,7 +262,7 @@ void EditorApp::drawToolRail(int fbw, int fbh, const Theme& th) {
 
 // ---- hierarquia (árvore de objetos) — painel direito superior ----
 void EditorApp::drawHierarchy(int fbw, int fbh, const Theme& th) {
-  if (confirmExit_) return;
+  if (confirmExit_ || prefsOpen_) return;
   const LayoutRects lay = layout();
   const float x = static_cast<float>(fbw - lay.rightW + 2);
   const float w = static_cast<float>(lay.rightW - 4);
@@ -263,41 +272,94 @@ void EditorApp::drawHierarchy(int fbw, int fbh, const Theme& th) {
   ui_.rect(x, y, w, h, th.panelR, th.panelG, th.panelB);
   ui_.frame(x, y, w, h, 1, th.lineR, th.lineG, th.lineB);
   uiText("Hierarquia", x + 10, y + 8, 13, th.inkR, th.inkG, th.inkB);
-  ui_.rect(x, y + 26, w, 1, th.lineR, th.lineG, th.lineB);
 
   double mx, my;
   glfwGetCursorPos(window_, &mx, &my);
   const bool down = glfwGetMouseButton(window_, GLFW_MOUSE_BUTTON_LEFT) == GLFW_PRESS;
   const bool clicked = down && !mouseWasDown_;
 
-  float ly = y + 34;
-  const int maxShow = static_cast<int>((h - 42) / 20.f);
+  // ===== inserção de primitivas (linha de botões) =====
+  const char* primNames[] = {"+ caixa", "+ esfera", "+ cilindro", "+ luz"};
+  float px = x + 8;
+  for (int index = 0; index < 4; ++index) {
+    ui_.rect(px, y + 26, 74, 20, th.panelAltR, th.panelAltG, th.panelAltB);
+    ui_.frame(px, y + 26, 74, 20, 1, th.lineR, th.lineG, th.lineB);
+    uiText(primNames[index], px + 8, y + 31, 10, th.inkR, th.inkG, th.inkB);
+    if (clicked && buttonHit(mx, my, px, y + 26, 74, 20)) {
+      if (index == 3) addLight(); else addObjectPrimitive(index);
+    }
+    px += 78;
+  }
+
+  // ===== busca =====
+  const bool searchActive = !hierarchyFilter_.empty();
+  ui_.rect(x + 8, y + 52, w - 16, 20, th.panelAltR, th.panelAltG, th.panelAltB);
+  ui_.frame(x + 8, y + 52, w - 16, 20, 1, th.lineR, th.lineG, th.lineB);
+  uiText(searchActive ? ("busca: " + hierarchyFilter_) : "buscar objetos...",
+         x + 14, y + 56, 10, searchActive ? th.inkR : th.inkSoftR, searchActive ? th.inkG : th.inkSoftG, searchActive ? th.inkB : th.inkSoftB);
+  if (clicked && buttonHit(mx, my, x + 8, y + 52, w - 16, 20)) {
+    FILE* pipe = popen("zenity --entry --title='Buscar objetos' --text='Nome/grupo:' 2>/dev/null | tr -d '\n'", "r");
+    char buffer[64] = {};
+    if (pipe && fgets(buffer, sizeof(buffer), pipe)) hierarchyFilter_ = buffer;
+    else hierarchyFilter_.clear();
+    if (pipe) pclose(pipe);
+  }
+
+  // ===== lista =====
+  float ly = y + 80;
+  const int maxShow = static_cast<int>((h - 92) / 20.f);
   int shown = 0;
-  for (size_t index = 0; index < world_.blocks.size() && shown < maxShow; ++index, ++shown) {
+  if (blockHidden_.size() != world_.blocks.size()) blockHidden_.resize(world_.blocks.size(), false);
+  if (blockLocked_.size() != world_.blocks.size()) blockLocked_.resize(world_.blocks.size(), false);
+  if (blockGroups_.size() != world_.blocks.size()) blockGroups_.resize(world_.blocks.size());
+
+  for (size_t index = 0; index < world_.blocks.size() && shown < maxShow; ++index) {
     const Block& block = world_.blocks[index];
+    const std::string group = blockGroups_[index].empty() ? "raiz" : blockGroups_[index];
+    // filtro de busca por grupo ou índice
+    if (searchActive) {
+      const std::string needle = hierarchyFilter_;
+      char indexText[16];
+      std::snprintf(indexText, sizeof(indexText), "part%zu", index + 1);
+      if (group.find(needle) == std::string::npos && needle != indexText) continue;
+    }
     const bool selected = std::find(selection_.begin(), selection_.end(), static_cast<int>(index)) != selection_.end();
     if (selected) ui_.rect(x + 2, ly, w - 4, 18, th.selR * 0.25f, th.selG * 0.25f, th.selB * 0.25f);
-    // ícone do objeto: quadradinho da cor
+
+    // ícone colorido
     ui_.rect(x + 10, ly + 4, 10, 10, block.color.r / 255.f, block.color.g / 255.f, block.color.b / 255.f);
-    char label[64];
-    std::snprintf(label, sizeof(label), "Part%zu", index + 1);
+    // nome com estado
+    char label[96];
+    std::snprintf(label, sizeof(label), "Part%zu%s%s", index + 1,
+                  blockHidden_[index] ? " (oculto)" : "", blockLocked_[index] ? " [travado]" : "");
     uiText(label, x + 28, ly + 4, 11, selected ? th.inkR : th.inkSoftR, selected ? th.inkG : th.inkSoftG, selected ? th.inkB : th.inkSoftB);
-    if (clicked && buttonHit(mx, my, x, ly, w, 18)) {
-      selected_ = static_cast<int>(index);
-      selection_.clear();
-      selection_.push_back(selected_);
-      setStatus("Bloco " + std::to_string(selected_) + " selecionado na hierarquia.");
+    // grupo à direita
+    uiText(group, x + w - 66, ly + 4, 9, th.inkSoftR, th.inkSoftG, th.inkSoftB);
+    // clique: seleciona (se não travado)
+    if (clicked && buttonHit(mx, my, x, ly, w - 52, 18)) {
+      if (blockLocked_[index]) {
+        setStatus("Objeto " + std::to_string(index) + " está travado — destrave na hierarquia.");
+      } else {
+        selected_ = static_cast<int>(index);
+        selection_.clear();
+        selection_.push_back(selected_);
+      }
+    }
+    // botões de estado (olho/cadeado simplificados: O/L)
+    {
+      const float bx = x + w - 52;
+      uiText(blockHidden_[index] ? "[oc]o" : "[oc]", bx, ly + 4, 9, th.inkSoftR, th.inkSoftG, th.inkSoftB);
+      if (clicked && buttonHit(mx, my, bx, ly, 24, 18)) toggleHidden(static_cast<int>(index));
+      const float bx2 = bx + 26;
+      uiText(blockLocked_[index] ? "[trv]*" : "[trv]", bx2, ly + 4, 9, th.inkSoftR, th.inkSoftG, th.inkSoftB);
+      if (clicked && buttonHit(mx, my, bx2, ly, 24, 18)) toggleLocked(static_cast<int>(index));
     }
     ly += 20;
+    ++shown;
   }
-  if (shown < static_cast<int>(world_.blocks.size())) {
-    char more[64];
-    std::snprintf(more, sizeof(more), "... +%zu objetos", world_.blocks.size() - static_cast<size_t>(shown));
-    uiText(more, x + 10, ly + 2, 11, th.inkSoftR, th.inkSoftG, th.inkSoftB);
-  }
+  if (shown == 0) uiText("(nenhum objeto)", x + 12, ly + 4, 11, th.inkSoftR, th.inkSoftG, th.inkSoftB);
 }
 
-// ---- propriedades do objeto selecionado (painel direito inferior) ----
 void EditorApp::drawProperties(int fbw, int fbh, const Theme& th) {
   if (confirmExit_) return;
   const LayoutRects lay = layout();

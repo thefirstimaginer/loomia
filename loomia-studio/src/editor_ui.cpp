@@ -593,6 +593,20 @@ void EditorApp::drawPrefs(int fbw, int fbh) {
   }
   ly += 26;
 
+  // Preview: proporção da tela de teste
+  uiText("Proporção do teste:", x + 14, ly, 12, th_.inkR, th_.inkG, th_.inkB);
+  ly += 18;
+  const char* aspects[] = {"livre", "16:9", "4:3", "1:1"};
+  for (int index = 0; index < 4; ++index) {
+    const float bx = x + 14 + index * 72.f;
+    const bool active = previewAspect_ == index;
+    ui_.rect(bx, ly, 66, 20, active ? th_.accentR : th_.panelAltR, active ? th_.accentG : th_.panelAltG, active ? th_.accentB : th_.panelAltB);
+    ui_.frame(bx, ly, 66, 20, 1, th_.lineR, th_.lineG, th_.lineB);
+    uiText(aspects[index], bx + 14, ly + 5, 11, active ? th_.accentTextR : th_.inkR, active ? th_.accentTextG : th_.inkG, active ? th_.accentTextB : th_.inkB);
+    if (clicked && buttonHit(mx, my, bx, ly, 66, 20)) previewAspect_ = index;
+  }
+  ly += 30;
+
   uiText("Essas opções não afetam o mapa nem o jogo.", x + 14, ly, 11, th_.inkSoftR, th_.inkSoftG, th_.inkSoftB);
 
   if (clicked && !(mx > x && mx < x + w && my > y && my < y + h)) {

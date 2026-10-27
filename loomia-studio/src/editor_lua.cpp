@@ -53,16 +53,45 @@ void EditorApp::drawLuaCodeEditor(int fbw, int fbh, const Theme& th) {
   ui_.rect(x, y, w, h, th.panelAltR, th.panelAltG, th.panelAltB);
   ui_.frame(x, y, w, h, 1, th.lineR, th.lineG, th.lineB);
 
-  if (luaEditorScript_ < 0 || luaEditorScript_ >= static_cast<int>(loomDoc_.scripts.size())) {
-    uiText("Selecione um script na lista à esquerda.", x + 16, y + 16, 14, th.inkSoftR, th.inkSoftG, th.inkSoftB);
-    return;
-  }
-  LoomScript& script = loomDoc_.scripts[static_cast<size_t>(luaEditorScript_)];
-
   double mx, my;
   glfwGetCursorPos(window_, &mx, &my);
   const bool down = glfwGetMouseButton(window_, GLFW_MOUSE_BUTTON_LEFT) == GLFW_PRESS;
   const bool clicked = down && !mouseWasDown_;
+
+  // ===== abas dos scripts =====
+  {
+    float tabX = x + 8;
+    const float tabW = 110, tabH = 26;
+    for (size_t index = 0; index < loomDoc_.scripts.size(); ++index) {
+      const bool active = luaEditorScript_ == static_cast<int>(index);
+      ui_.rect(tabX, y + 4, tabW, tabH, active ? th.accentR : th.panelR, active ? th.accentG : th.panelG, active ? th.accentB : th.panelB);
+      ui_.frame(tabX, y + 4, tabW, tabH, 1, th.lineR, th.lineG, th.lineB);
+      const std::string& name = loomDoc_.scripts[index].id;
+      uiText(name.substr(0, 14), tabX + 10, y + 12, 11, active ? th.accentTextR : th.inkR, active ? th.accentTextG : th.inkG, active ? th.accentTextB : th.inkB);
+      if (clicked && buttonHit(mx, my, tabX, y + 4, tabW, tabH)) luaEditorScript_ = static_cast<int>(index);
+      tabX += tabW + 4;
+    }
+    // aba "+"
+    ui_.rect(tabX, y + 4, 30, tabH, th.panelR, th.panelG, th.panelB);
+    ui_.frame(tabX, y + 4, 30, tabH, 1, th.lineR, th.lineG, th.lineB);
+    uiText("+", tabX + 12, y + 12, 12, th.inkR, th.inkG, th.inkB);
+    if (clicked && buttonHit(mx, my, tabX, y + 4, 30, tabH)) {
+      LoomScript script;
+      script.id = "script" + std::to_string(loomDoc_.scripts.size() + 1);
+      script.language = "lua";
+      script.target = "server";
+      script.source = "-- script Lua do mapa\n";
+      loomDoc_.scripts.push_back(script);
+      luaEditorScript_ = static_cast<int>(loomDoc_.scripts.size()) - 1;
+      markDirty();
+    }
+  }
+
+  if (luaEditorScript_ < 0 || luaEditorScript_ >= static_cast<int>(loomDoc_.scripts.size())) {
+    uiText("Crie ou selecione um script nas abas acima.", x + 16, y + 40, 14, th.inkSoftR, th.inkSoftG, th.inkSoftB);
+    return;
+  }
+  LoomScript& script = loomDoc_.scripts[static_cast<size_t>(luaEditorScript_)];
 
   // Cabeçalho: nome do script, alvo, botões salvar/executar/remover
   ui_.rect(x, y, w, 30, th.panelR, th.panelG, th.panelB);
@@ -245,6 +274,7 @@ void EditorApp::drawLuaCodeEditor(int fbw, int fbh, const Theme& th) {
         luaConsole_ = "aviso: " + std::to_string(functions) + " abertura(s) vs " + std::to_string(ends) +
                       " 'end' — confira o script\n";
       }
+      luaConsole_ += "doc: onTouch(part), onEnter(player), part.velocity, player.teleport(pos)\n";
     }
     const float cx = bx + 96;
     ui_.rect(cx, consoleY + consoleH - 30, 80, 24, th.panelAltR, th.panelAltG, th.panelAltB);
