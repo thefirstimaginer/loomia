@@ -311,7 +311,12 @@ bool EditorApp::initWindow(std::string& error) {
   });
   glfwSetScrollCallback(window_, [](GLFWwindow* w, double, double yoff) {
     if (auto* self = static_cast<EditorApp*>(glfwGetWindowUserPointer(w))) {
-      self->camDist_ = std::clamp(self->camDist_ - static_cast<float>(yoff) * 2.5f, 4.f, 220.f);
+      const LayoutRects lay = self->layout();
+      double cx = 0, cy = 0;
+      glfwGetCursorPos(w, &cx, &cy);
+      const bool inside = cx >= lay.viewportX() && cx <= lay.viewportX() + lay.viewportW() &&
+                          cy >= lay.viewportY() && cy <= lay.viewportY() + lay.viewportH();
+      if (inside) self->camDist_ = std::clamp(self->camDist_ - static_cast<float>(yoff) * 2.5f, 4.f, 220.f);
     }
   });
   glfwSetFramebufferSizeCallback(window_, [](GLFWwindow* w, int width, int height) {
@@ -520,7 +525,17 @@ EditorResult EditorApp::run() {
     if (uiCooldown_ > 0) --uiCooldown_;
 
     // ---------- câmera: botão direito orbita, roda dá zoom, WASD move o alvo
-    if (glfwGetMouseButton(window_, GLFW_MOUSE_BUTTON_RIGHT) == GLFW_PRESS) {
+    // (SÓ dentro do viewport central; com modal aberto nenhuma câmera mexe)
+    double probeX = 0, probeY = 0;
+    glfwGetCursorPos(window_, &probeX, &probeY);
+    const bool cursorInViewport = [this](double x, double y) {
+      const LayoutRects lay = layout();
+      return x >= lay.viewportX() && x <= lay.viewportX() + lay.viewportW() &&
+             y >= lay.viewportY() && y <= lay.viewportY() + lay.viewportH();
+    }(probeX, probeY);
+    const bool cameraAllowed = inEditor_ && !confirmExit_ && cursorInViewport && uiCooldown_ == 0;
+
+    if (cameraAllowed && glfwGetMouseButton(window_, GLFW_MOUSE_BUTTON_RIGHT) == GLFW_PRESS) {
       double x, y;
       glfwGetCursorPos(window_, &x, &y);
       if (!orbiting_) { orbiting_ = true; lastX_ = x; lastY_ = y; }
@@ -532,8 +547,8 @@ EditorResult EditorApp::run() {
       orbiting_ = false;
     }
 
-    // Botão do meio: pan do mapa (move o alvo da câmera no plano da tela).
-    if (glfwGetMouseButton(window_, GLFW_MOUSE_BUTTON_MIDDLE) == GLFW_PRESS) {
+    // Botão do meio: pan do mapa (só dentro do viewport e sem modal).
+    if (cameraAllowed && glfwGetMouseButton(window_, GLFW_MOUSE_BUTTON_MIDDLE) == GLFW_PRESS) {
       double x, y;
       glfwGetCursorPos(window_, &x, &y);
       if (!panning_) { panning_ = true; lastX_ = x; lastY_ = y; }

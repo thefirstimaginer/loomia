@@ -102,7 +102,7 @@ bool UiFont::init(const std::string& ttfPath, std::string& error) {
   FT_Set_Pixel_Sizes(face, 0, 64);
   // Rasteriza ASCII e Latin-1 (acentos). Índice: ASCII -> code-32, Latin-1 -> code-0xA1.
   auto rasterize = [&](unsigned int codepoint, Glyph& out) {
-    if (FT_Load_Char(face, codepoint, FT_LOAD_RENDER)) return;
+        if (FT_Load_Char(face, codepoint, FT_LOAD_RENDER | FT_LOAD_TARGET_NORMAL)) return;
     const FT_GlyphSlot slot = face->glyph;
     const unsigned int w = slot->bitmap.width;
     const unsigned int h = slot->bitmap.rows;

@@ -17,34 +17,47 @@ namespace {
 
 // Ícones simples desenhados com rects/triângulos (sem dependência externa).
 void iconSelect(UiOverlay& ui, float x, float y, float s, const Theme& th) {
-  ui.tri(x + s * 0.25f, y + s * 0.15f, x + s * 0.25f, y + s * 0.65f, x + s * 0.55f, y + s * 0.42f, th.inkR, th.inkG, th.inkB);
-  ui.tri(x + s * 0.25f, y + s * 0.15f, x + s * 0.55f, y + s * 0.42f, x + s * 0.25f, y + s * 0.42f, th.inkR, th.inkG, th.inkB);
+  // Cursor de seta: triângulo fino + cauda retangular.
+  ui.tri(x + s*0.22f, y + s*0.12f, x + s*0.22f, y + s*0.68f, x + s*0.52f, y + s*0.5f, th.inkR, th.inkG, th.inkB);
+  ui.tri(x + s*0.22f, y + s*0.12f, x + s*0.52f, y + s*0.5f, x + s*0.22f, y + s*0.5f, th.inkR, th.inkG, th.inkB);
+  ui.tri(x + s*0.22f, y + s*0.55f, x + s*0.52f, y + s*0.78f, x + s*0.34f, y + s*0.78f, th.inkR, th.inkG, th.inkB);
 }
 void iconMove(UiOverlay& ui, float x, float y, float s, const Theme& th) {
-  const float c = s / 2, t = s * 0.09f;
-  ui.rect(x + c - t / 2, y + s * 0.14f, t, s * 0.72f, th.inkR, th.inkG, th.inkB);
-  ui.rect(x + s * 0.14f, y + c - t / 2, s * 0.72f, t, th.inkR, th.inkG, th.inkB);
-  ui.tri(x + c, y + s * 0.06f, x + c - s * 0.1f, y + s * 0.24f, x + c + s * 0.1f, y + s * 0.24f, th.inkR, th.inkG, th.inkB);
-  ui.tri(x + c, y + s * 0.94f, x + c - s * 0.1f, y + s * 0.76f, x + c + s * 0.1f, y + s * 0.76f, th.inkR, th.inkG, th.inkB);
-  ui.tri(x + s * 0.06f, y + c, x + s * 0.24f, y + c - s * 0.1f, x + s * 0.24f, y + c + s * 0.1f, th.inkR, th.inkG, th.inkB);
-  ui.tri(x + s * 0.94f, y + c, x + s * 0.78f, y + c - s * 0.1f, x + s * 0.78f, y + c + s * 0.1f, th.inkR, th.inkG, th.inkB);
+  const float c = s/2;
+  // Cruz de 4 setas com haste central limpa.
+  ui.rect(x + c - s*0.04f, y + s*0.2f, s*0.08f, s*0.6f, th.inkR, th.inkG, th.inkB);
+  ui.rect(x + s*0.2f, y + c - s*0.04f, s*0.6f, s*0.08f, th.inkR, th.inkG, th.inkB);
+  // pontas (4 triângulos)
+  ui.tri(x + c, y + s*0.08f, x + c - s*0.09f, y + s*0.24f, x + c + s*0.09f, y + s*0.24f, th.inkR, th.inkG, th.inkB);
+  ui.tri(x + c, y + s*0.92f, x + c - s*0.09f, y + s*0.76f, x + c + s*0.09f, y + s*0.76f, th.inkR, th.inkG, th.inkB);
+  ui.tri(x + s*0.08f, y + c, x + s*0.24f, y + c - s*0.09f, x + s*0.24f, y + c + s*0.09f, th.inkR, th.inkG, th.inkB);
+  ui.tri(x + s*0.92f, y + c, x + s*0.76f, y + c - s*0.09f, x + s*0.76f, y + c + s*0.09f, th.inkR, th.inkG, th.inkB);
 }
 void iconScale(UiOverlay& ui, float x, float y, float s, const Theme& th) {
-  ui.frame(x + s * 0.15f, y + s * 0.35f, s * 0.45f, s * 0.45f, s * 0.07f, th.inkR, th.inkG, th.inkB);
-  ui.rect(x + s * 0.62f, y + s * 0.12f, s * 0.09f, s * 0.6f, th.inkR, th.inkG, th.inkB);
-  ui.rect(x + s * 0.5f, y + s * 0.12f, s * 0.32f, s * 0.09f, th.inkR, th.inkG, th.inkB);
+  // Quadrado pequeno -> quadrado maior (seta diagonal).
+  ui.frame(x + s*0.15f, y + s*0.45f, s*0.3f, s*0.3f, s*0.06f, th.inkR, th.inkG, th.inkB);
+  ui.frame(x + s*0.5f, y + s*0.1f, s*0.36f, s*0.36f, s*0.05f, th.inkR, th.inkG, th.inkB);
+  ui.tri(x + s*0.42f, y + s*0.58f, x + s*0.52f, y + s*0.48f, x + s*0.62f, y + s*0.58f, th.inkR, th.inkG, th.inkB);
 }
 void iconPaint(UiOverlay& ui, float x, float y, float s, const Theme& th) {
-  ui.rect(x + s * 0.55f, y + s * 0.1f, s * 0.16f, s * 0.38f, th.inkR, th.inkG, th.inkB);
-  ui.tri(x + s * 0.28f, y + s * 0.68f, x + s * 0.55f, y + s * 0.42f, x + s * 0.6f, y + s * 0.72f, th.inkR, th.inkG, th.inkB);
-  ui.rect(x + s * 0.22f, y + s * 0.74f, s * 0.3f, s * 0.1f, th.inkR, th.inkG, th.inkB);
+  // Balde: corpo trapezoidal + alça.
+  ui.tri(x + s*0.2f, y + s*0.75f, x + s*0.35f, y + s*0.35f, x + s*0.65f, y + s*0.35f, th.inkR, th.inkG, th.inkB);
+  ui.tri(x + s*0.2f, y + s*0.75f, x + s*0.65f, y + s*0.35f, x + s*0.5f, y + s*0.75f, th.inkR, th.inkG, th.inkB);
+  ui.rect(x + s*0.3f, y + s*0.22f, s*0.4f, s*0.1f, th.inkR, th.inkG, th.inkB);
 }
 void iconErase(UiOverlay& ui, float x, float y, float s, const Theme& th) {
-  ui.frame(x + s * 0.18f, y + s * 0.3f, s * 0.64f, s * 0.4f, s * 0.06f, th.inkR, th.inkG, th.inkB);
-  ui.rect(x + s * 0.35f, y + s * 0.46f, s * 0.3f, s * 0.08f, th.inkR, th.inkG, th.inkB);
+  // Borracha: paralelogramo inclinado + linha de chão.
+  ui.tri(x + s*0.2f, y + s*0.62f, x + s*0.45f, y + s*0.28f, x + s*0.75f, y + s*0.5f, th.inkR, th.inkG, th.inkB);
+  ui.tri(x + s*0.2f, y + s*0.62f, x + s*0.75f, y + s*0.5f, x + s*0.5f, y + s*0.72f, th.inkR, th.inkG, th.inkB);
+  ui.rect(x + s*0.2f, y + s*0.8f, s*0.6f, s*0.05f, th.inkR, th.inkG, th.inkB);
+}
+void iconAdd(UiOverlay& ui, float x, float y, float s, const Theme& th) {
+  // Cubo: face superior + duas laterais.
+  ui.rect(x + s*0.18f, y + s*0.42f, s*0.45f, s*0.38f, th.inkR, th.inkG, th.inkB);
+  ui.rect(x + s*0.18f, y + s*0.3f, s*0.45f, s*0.12f, th.inkR*0.75f, th.inkG*0.75f, th.inkB*0.75f);
+  ui.rect(x + s*0.63f, y + s*0.42f, s*0.16f, s*0.38f, th.inkR*0.6f, th.inkG*0.6f, th.inkB*0.6f);
 }
 
-// Botão de ícone; devolve true no clique. `active` pinta com o accent.
 bool iconButton(UiOverlay& ui, double mx, double my, bool clicked, float x, float y, float s, bool active, const Theme& th) {
   ui.rect(x, y, s, s, active ? th.accentR : th.panelAltR, active ? th.accentG : th.panelAltG, active ? th.accentB : th.panelAltB);
   ui.frame(x, y, s, s, 1.f, th.lineR, th.lineG, th.lineB);
@@ -63,7 +76,7 @@ void EditorApp::drawTopbar(int fbw, int fbh, const Theme& th) {
   glfwGetCursorPos(window_, &mx, &my);
   const bool down = glfwGetMouseButton(window_, GLFW_MOUSE_BUTTON_LEFT) == GLFW_PRESS;
   const bool clicked = down && !mouseWasDown_;
-  if (confirmExit_) { clickConsumed_ = true; drawConfirmExit(fbw, fbh); ui_.flush(); flushText(); return; }
+  if (confirmExit_) return;  // modal é desenhado no loop
 
   // Menu Arquivo
   const float fx = 8, fy = 6, fw = 76, fh = 34;
@@ -171,6 +184,7 @@ void EditorApp::drawTopbar(int fbw, int fbh, const Theme& th) {
 
 // ---- rail vertical de ferramentas (esquerda) ----
 void EditorApp::drawToolRail(int fbw, int fbh, const Theme& th) {
+  if (confirmExit_) return;
   const LayoutRects lay = layout();
   const float x = 4, y = static_cast<float>(lay.topbarH) + 4;
   const float s = 36, gap = 4;
@@ -207,6 +221,7 @@ void EditorApp::drawToolRail(int fbw, int fbh, const Theme& th) {
 
 // ---- hierarquia (árvore de objetos) — painel direito superior ----
 void EditorApp::drawHierarchy(int fbw, int fbh, const Theme& th) {
+  if (confirmExit_) return;
   const LayoutRects lay = layout();
   const float x = static_cast<float>(fbw - lay.rightW + 2);
   const float w = static_cast<float>(lay.rightW - 4);
@@ -252,6 +267,7 @@ void EditorApp::drawHierarchy(int fbw, int fbh, const Theme& th) {
 
 // ---- propriedades do objeto selecionado (painel direito inferior) ----
 void EditorApp::drawProperties(int fbw, int fbh, const Theme& th) {
+  if (confirmExit_) return;
   const LayoutRects lay = layout();
   const float x = static_cast<float>(fbw - lay.rightW + 2);
   const float w = static_cast<float>(lay.rightW - 4);
@@ -342,6 +358,7 @@ void EditorApp::drawProperties(int fbw, int fbh, const Theme& th) {
 
 // ---- faixa inferior: recursos (miniaturas de materiais) + coordenadas ----
 void EditorApp::drawResourceStrip(int fbw, int fbh, const Theme& th) {
+  if (confirmExit_) return;
   const LayoutRects lay = layout();
   const float x = static_cast<float>(lay.leftW) + 2;
   const float y = static_cast<float>(fbh - lay.bottomH);
