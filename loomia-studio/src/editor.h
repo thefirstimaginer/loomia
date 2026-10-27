@@ -217,7 +217,7 @@ class EditorApp {
   void drawScriptsPanel(int fbw, int fbh);   // sidebar da aba Scripts
   void drawScenePanel(int fbw, int fbh);     // sidebar da aba Cena
   int scriptPanelSel_ = -1;                  // script selecionado na sidebar
-  void drawPrefs(float x, float y);         // painel de preferências
+  void drawPrefs(int fbw, int fbh);         // painel de preferências
   void drawPlayWindow();                     // janela separada do Play
 
   // ---- editor_ui.cpp ----

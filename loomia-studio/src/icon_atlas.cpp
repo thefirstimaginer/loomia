@@ -70,14 +70,24 @@ bool IconAtlas::init(const std::string& iconsDir, std::string& error) {
   glGenVertexArrays(1, &vao_);
   glGenBuffers(1, &vbo_);
 
-  const char* names[] = {"select", "add", "move", "scale", "paint", "erase",
-                         "play", "stop", "save", "open", "new", "undo", "redo", "dark", "light",
-                         "pref", "part", "folder"};
-  for (const char* name : names) {
-    const std::string path = iconsDir + "/" + name + ".png";
+  // Arquivos reais em misc/icons/loomia-studio-icons e seus apelidos na UI.
+  const std::pair<const char*, const char*> files[] = {
+      {"icons8-cursor-50.png", "select"},
+      {"icons8-edit-pencil-50.png", "add"},
+      {"icons8-move-50.png", "move"},
+      {"icons8-resize-50.png", "scale"},
+      {"icons8-pause-50.png", "stop"},
+      {"icons8-lua-language-50.png", "lua"},
+      {"icons8-save-50.png", "save"},
+      {"icons8-sun-50.png", "theme"},
+      {"icons8-do-not-disturb-ios-50.png", "prefs"},
+  };
+  for (const auto& entry : files) {
+    const std::string path = iconsDir + "/" + entry.first;
     std::string pngError;
     PngImage image = loadPngFile(path, pngError);
     if (!image.ok) continue;  // ícone ausente: o fallback vetorial cobre
+    const std::string& name = entry.second;
 
     Icon icon;
     icon.width = image.width;

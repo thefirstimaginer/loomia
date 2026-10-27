@@ -131,55 +131,75 @@ void EditorApp::drawTopbar(int fbw, int fbh, const Theme& th) {
   const float is = 30, iy = 6;
   auto next = [&ix, is]() { const float r = ix; ix += is + 6; return r; };
 
-  if (iconButton(ui_, mx, my, clicked, next(), iy, is, false, th)) newFromTemplate(0);  // novo
-  ui_.frame(ix + 4, iy + 8, is - 8, is - 8, 2, th.inkR, th.inkG, th.inkB);  // ícone folha
-  ix += is + 6;
-  if (iconButton(ui_, mx, my, clicked, next(), iy, is, false, th)) {  // abrir (pasta)
-    FILE* pipe = popen("zenity --file-selection --title='Abrir mapa .loom' 2>/dev/null | tr -d '\\n'", "r");
-    char buffer[1024] = {};
-    if (pipe && fgets(buffer, sizeof(buffer), pipe)) {
-      std::string chosen = buffer;
-      if (!chosen.empty()) { std::string err; if (!openLoom(chosen, err)) setStatus("Erro: " + err); addRecent(chosen); }
+  // Botões com ícone PNG + rótulo pequeno abaixo (fallback: rótulo puro).
+  const auto topButton = [&](const char* iconName, const char* label, float bx, float bw, bool active) {
+    ui_.rect(bx, iy, bw, is + 16, active ? th.accentR : th.panelAltR, active ? th.accentG : th.panelAltG, active ? th.accentB : th.panelAltB);
+    ui_.frame(bx, iy, bw, is + 16, 1, th.lineR, th.lineG, th.lineB);
+    if (iconName && icons_.ready() && icons_.has(iconName)) {
+      drawIcon(ui_, icons_, iconName, bx + (bw - is) / 2, iy + 2, is - 6, th);
     }
-    if (pipe) pclose(pipe);
-  }
-  ui_.frame(ix - is + 4, iy + 8, is - 8, is * 0.55f, 2, th.inkR, th.inkG, th.inkB);
-  ix += is + 6;
-  if (iconButton(ui_, mx, my, clicked, next(), iy, is, false, th)) {  // salvar (disquete)
-    std::string err;
-    if (!filePath_.empty()) { if (saveLoom(filePath_, err)) addRecent(filePath_); else setStatus("Erro: " + err); }
-    else if (!saveWithDialog()) setStatus("Salvamento cancelado.");
-  }
-  ui_.frame(ix - is + 5, iy + 6, is - 10, is - 6, 2, th.inkR, th.inkG, th.inkB);
+    uiText(label, bx + (bw - font_.textWidth(label, 9)) / 2, iy + is - 2, 9, active ? th.accentTextR : th.inkSoftR, active ? th.accentTextG : th.inkSoftG, active ? th.accentTextB : th.inkSoftB);
+  };
+  auto inButton = [&](float bx, float bw) {
+    return clicked && mx >= bx && mx <= bx + bw && my >= iy && my <= iy + is + 16;
+  };
 
-  ix += 10;  // separador
-  if (iconButton(ui_, mx, my, clicked, next(), iy, is, false, th)) undo();   // undo ←
-  ui_.rect(ix - is + 8, iy + is / 2 - 1, is - 16, 2, th.inkR, th.inkG, th.inkB);
-  if (iconButton(ui_, mx, my, clicked, next(), iy, is, false, th)) redo();   // redo →
-  ui_.rect(ix - is + 8, iy + is / 2 - 1, is - 16, 2, th.inkR, th.inkG, th.inkB);
-
-  ix += 10;
-  // Play/Stop (mesmo botão: abre a janela de teste; fechar volta)
   {
-    const bool wasPlaying = playTestOpen_;
-    if (iconButton(ui_, mx, my, clicked, next(), iy, is, wasPlaying, th)) playTestOpen_ = !playTestOpen_;
-    const float bx = ix - is + 9, by = iy + 7;
-    ui_.tri(bx, by, bx, by + is * 0.5f, bx + is * 0.55f, by + is * 0.25f, th.inkR, th.inkG, th.inkB, 1.f);
-    ui_.tri(bx, by, bx + is * 0.55f, by + is * 0.25f, bx, by + is * 0.5f, th.inkR, th.inkG, th.inkB, 1.f);
+    const float bx = next();
+    topButton(nullptr, "novo", bx, is + 14, false);
+    if (inButton(bx, is + 14)) newFromTemplate(0);
   }
-
-  ix += 10;
-  // Tema claro/escuro (preferência do editor)
-  if (iconButton(ui_, mx, my, clicked, next(), iy, is, prefsDark_, th)) prefsDark_ = !prefsDark_;
-  if (prefsDark_) {  // lua
-    ui_.rect(ix - is + 12, iy + 7, is * 0.55f, is * 0.55f, 0.95f, 0.93f, 0.75f);
-  } else {           // sol
-    ui_.rect(ix - is + 12, iy + 12, is * 0.45f, is * 0.45f, 0.95f, 0.85f, 0.3f);
-    for (int k = 0; k < 8; ++k) {
-      const float a = k * 0.785f;
-      ui_.rect(ix - is / 2 + std::cos(a) * is * 0.42f - 1, iy + is / 2 + std::sin(a) * is * 0.42f - 1, 3, 3, 0.95f, 0.85f, 0.3f);
+  {
+    const float bx = next();
+    topButton(nullptr, "abrir", bx, is + 14, false);
+    if (inButton(bx, is + 14)) {
+      FILE* pipe = popen("zenity --file-selection --title='Abrir mapa .loom' 2>/dev/null | tr -d '\n'", "r");
+      char buffer[1024] = {};
+      if (pipe && fgets(buffer, sizeof(buffer), pipe)) {
+        std::string chosen = buffer;
+        if (!chosen.empty()) { std::string err; if (!openLoom(chosen, err)) setStatus("Erro: " + err); addRecent(chosen); }
+      }
+      if (pipe) pclose(pipe);
     }
   }
+  {
+    const float bx = next();
+    topButton("save", "salvar", bx, is + 14, false);
+    if (inButton(bx, is + 14)) {
+      std::string err;
+      if (!filePath_.empty()) { if (saveLoom(filePath_, err)) addRecent(filePath_); else setStatus("Erro: " + err); }
+      else if (!saveWithDialog()) setStatus("Salvamento cancelado.");
+    }
+  }
+  {
+    const float bx = next();
+    topButton(nullptr, "undo", bx, is + 14, false);
+    if (inButton(bx, is + 14)) undo();
+  }
+  {
+    const float bx = next();
+    topButton(nullptr, "refazer", bx, is + 14, false);
+    if (inButton(bx, is + 14)) redo();
+  }
+  {
+    const float bx = next();
+    topButton(nullptr, "play", bx, is + 14, playTestOpen_);
+    if (inButton(bx, is + 14)) {
+      if (playTestOpen_) endTestPlay(); else playTestOpen_ = true;
+    }
+  }
+  {
+    const float bx = next();
+    topButton("lua", "scripts", bx, is + 14, activeTab_ == 1);
+    if (inButton(bx, is + 14)) activeTab_ = 1;
+  }
+  {
+    const float bx = next();
+    topButton("theme", prefsDark_ ? "escuro" : "claro", bx, is + 14, prefsDark_);
+    if (inButton(bx, is + 14)) prefsDark_ = !prefsDark_;
+  }
+  ix += 8;
+
 
   // Preferências no canto direito
   {

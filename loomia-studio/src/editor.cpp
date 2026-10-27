@@ -577,7 +577,12 @@ EditorResult EditorApp::run() {
       updateTestPlay(dt);
     }
 
-    if (inEditor_ && !confirmExit_ && !playTestOpen_) {
+    // Modal de preferências: viewport inteiramente bloqueado enquanto aberto.
+    if (inEditor_ && prefsOpen_) {
+      // (nenhuma interação de edição — o popup atende no final do frame)
+    }
+
+    if (inEditor_ && !confirmExit_ && !playTestOpen_ && !prefsOpen_) {
       double mx, my;
       glfwGetCursorPos(window_, &mx, &my);
       const LayoutRects layNow = layout();
@@ -716,7 +721,14 @@ EditorResult EditorApp::run() {
     glClearColor(world_.sky.rf(), world_.sky.gf(), world_.sky.bf(), 1.f);
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
-    if (inEditor_) {
+    if (inEditor_ && activeTab_ == 1) {
+      // Aba Scripts: SEM cena 3D — o editor de código ocupa o viewport.
+      const Theme themeNow = theme();
+      glDisable(GL_SCISSOR_TEST);
+      glViewport(0, 0, fbw_, fbh_);
+      glClearColor(themeNow.bgR, themeNow.bgG, themeNow.bgB, 1.f);
+      glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+    } else if (inEditor_) {
       const LayoutRects lay = layout();
       const int vx = lay.viewportX(), vy = lay.viewportY();
       const int vw = lay.viewportW(), vh = lay.viewportH();
@@ -804,6 +816,11 @@ EditorResult EditorApp::run() {
       drawConfirmExit(fbw_, fbh_);
       ui_.flush();
       flushText();
+      if (prefsOpen_) {
+        drawPrefs(fbw_, fbh_);
+        ui_.flush();
+        flushText();
+      }
     } else {
       // Welcome: prévias 3D primeiro (viewport próprio), depois a UI 2D.
       drawTemplatePreviews(fbw_, fbh_);

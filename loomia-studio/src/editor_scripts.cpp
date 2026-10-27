@@ -49,6 +49,8 @@ void EditorApp::drawScriptsPanel(int fbw, int fbh) {
     script.target = "server";
     script.source = "-- script Lua do mapa\n";
     loomDoc_.scripts.push_back(script);
+    scriptPanelSel_ = static_cast<int>(loomDoc_.scripts.size()) - 1;
+    luaEditorScript_ = scriptPanelSel_;
     markDirty();
   }
 
@@ -59,7 +61,10 @@ void EditorApp::drawScriptsPanel(int fbw, int fbh) {
     const bool active = scriptPanelSel_ == static_cast<int>(index);
     ui_.rect(x + 10, ly, w - 20, 26.f, active ? 0.91f : 0.97f, active ? 0.71f : 0.97f, active ? 0.17f : 1.f);
     uiText(script.id + " (" + script.target + ")", x + 18, ly + 7, 12, 0.2f, 0.25f, 0.32f);
-    if (clicked && buttonHit(mx, my, x + 10, ly, w - 20, 26.f)) scriptPanelSel_ = static_cast<int>(index);
+    if (clicked && buttonHit(mx, my, x + 10, ly, w - 20, 26.f)) {
+      scriptPanelSel_ = static_cast<int>(index);
+      luaEditorScript_ = scriptPanelSel_;  // abre no editor de código central
+    }
     ly += 30;
   }
 

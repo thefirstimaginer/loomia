@@ -86,7 +86,7 @@ void EditorApp::drawUi(int fbw, int fbh) {
     ui_.frame(px, py, 124.f, 34.f, 2, 0.08f, 0.12f, 0.17f);
     uiText("⚙ Opções", px + 26, py + 10, 13, 0.15f, 0.2f, 0.3f);
     if (clicked && buttonHit(mx, my, px, py, 124.f, 34.f)) prefsOpen_ = !prefsOpen_;
-    if (prefsOpen_) drawPrefs(px, py + 40);
+    // (popup desenhado no loop, centralizado)
   }
 
   // ---------- barra de ferramentas superior
@@ -532,8 +532,12 @@ void EditorApp::hslToRgb(float h, float s, float v, float out[3]) const {
 
 // Preferências do editor — popup expandido: aparência, câmera, gizmos,
 // comportamento da interface. Nunca altera o mapa nem o jogo.
-void EditorApp::drawPrefs(float x, float y) {
-  const float w = 320.f, h = 320.f;
+void EditorApp::drawPrefs(int fbw, int fbh) {
+  // Popup MODAL no centro da tela: fundo escurecido + painel.
+  const float w = 340.f, h = 360.f;
+  const float x = (static_cast<float>(fbw) - w) / 2.f;
+  const float y = (static_cast<float>(fbh) - h) / 2.f;
+  ui_.rect(0, 0, static_cast<float>(fbw), static_cast<float>(fbh), 0.04f, 0.05f, 0.08f, 0.55f);
   ui_.rect(x, y, w, h, th_.panelR, th_.panelG, th_.panelB);
   ui_.frame(x, y, w, h, 2, th_.lineR, th_.lineG, th_.lineB);
   uiText("Preferências do Editor", x + 14, y + 12, 15, th_.inkR, th_.inkG, th_.inkB);
@@ -591,7 +595,10 @@ void EditorApp::drawPrefs(float x, float y) {
 
   uiText("Essas opções não afetam o mapa nem o jogo.", x + 14, ly, 11, th_.inkSoftR, th_.inkSoftG, th_.inkSoftB);
 
-  if (clicked && !(mx > x && mx < x + w && my > y && my < y + h)) prefsOpen_ = false;
+  if (clicked && !(mx > x && mx < x + w && my > y && my < y + h)) {
+    prefsOpen_ = false;
+    uiCooldown_ = 12;  // o clique de fechar não vaza para a viewport
+  }
 }
 
 }  // namespace loomia
