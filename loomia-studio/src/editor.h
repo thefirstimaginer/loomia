@@ -194,6 +194,7 @@ class EditorApp {
 
   // ---- editor_shell.cpp (redesign 3D) ----
   void drawTopbar(int fbw, int fbh, const Theme& th);
+  void drawTabs(int fbw, int fbh, const Theme& th);
   void drawToolRail(int fbw, int fbh, const Theme& th);
   void drawHierarchy(int fbw, int fbh, const Theme& th);
   void drawProperties(int fbw, int fbh, const Theme& th);
@@ -254,8 +255,8 @@ class EditorApp {
   void flushText();
   std::vector<TextDraw> textQueue_;
   int buttonHit(double mx, double my, float x, float y, float w, float h) const;
-  void drawUi(int fbw, int fbh);
   void drawWelcome(int fbw, int fbh);
+  void drawWelcomeText(int fbw, int fbh);
   void drawSceneMenu(float fbw, float fbh);
   void drawConfirmExit(int fbw, int fbh);
   void drawTemplatePreviews(int fbw, int fbh);

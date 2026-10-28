@@ -126,70 +126,152 @@ void EditorApp::drawTopbar(int fbw, int fbh, const Theme& th) {
     }
   }
 
-  // Ícones de arquivo e edição
-  float ix = fx + fw + 12;
+  // ===== botões da topbar: UMA tabela define posição, largura, ícone e ação =====
+  struct TopSlot {
+    const char* icon;   // PNG do atlas (nullptr = sem ícone)
+    const char* label;  // rótulo pequeno
+    float width;
+    int action;
+    bool active;
+  };
+  const TopSlot slots[] = {
+      {nullptr, "novo", 42, 0, false},
+      {nullptr, "abrir", 42, 1, false},
+      {"save", "salvar", 46, 2, false},
+      {nullptr, "undo", 40, 3, false},
+      {nullptr, "redo", 40, 4, false},
+      {nullptr, "play", 42, 5, playTestOpen_},
+      {nullptr, "pausar", 48, 6, testPaused_},
+      {nullptr, "reiniciar", 56, 7, false},
+      {"lua", "scripts", 56, 8, activeTab_ == 1},
+      {"theme", prefsDark_ ? "escuro" : "claro", 52, 9, prefsDark_},
+  };
+
   const float is = 30, iy = 6;
-  auto next = [&ix, is]() { const float r = ix; ix += is + 6; return r; };
-
-  // Botões com ícone PNG + rótulo pequeno abaixo (fallback: rótulo puro).
-  const auto topButton = [&](const char* iconName, const char* label, float bx, float bw, bool active) {
-    ui_.rect(bx, iy, bw, is + 16, active ? th.accentR : th.panelAltR, active ? th.accentG : th.panelAltG, active ? th.accentB : th.panelAltB);
-    ui_.frame(bx, iy, bw, is + 16, 1, th.lineR, th.lineG, th.lineB);
-    if (iconName && icons_.ready() && icons_.has(iconName)) {
-      drawIcon(ui_, icons_, iconName, bx + (bw - is) / 2, iy + 2, is - 6, th);
-    }
-    uiText(label, bx + (bw - font_.textWidth(label, 9)) / 2, iy + is - 2, 9, active ? th.accentTextR : th.inkSoftR, active ? th.accentTextG : th.inkSoftG, active ? th.accentTextB : th.inkSoftB);
-  };
-  auto inButton = [&](float bx, float bw) {
-    return clicked && mx >= bx && mx <= bx + bw && my >= iy && my <= iy + is + 16;
-  };
-
-  {
-    const float bx = next();
-    topButton(nullptr, "novo", bx, is + 14, false);
-    if (inButton(bx, is + 14)) newFromTemplate(0);
-  }
-  {
-    const float bx = next();
-    topButton(nullptr, "abrir", bx, is + 14, false);
-    if (inButton(bx, is + 14)) {
-      FILE* pipe = popen("zenity --file-selection --title='Abrir mapa .loom' 2>/dev/null | tr -d '\n'", "r");
-      char buffer[1024] = {};
-      if (pipe && fgets(buffer, sizeof(buffer), pipe)) {
-        std::string chosen = buffer;
-        if (!chosen.empty()) { std::string err; if (!openLoom(chosen, err)) setStatus("Erro: " + err); addRecent(chosen); }
+  float sx = fx + fw + 12;
+  for (const TopSlot& slot : slots) {
+    // Fundo + borda
+    ui_.rect(sx, iy, slot.width, is + 16, slot.active ? th.accentR : th.panelAltR,
+             slot.active ? th.accentG : th.panelAltG, slot.active ? th.accentB : th.panelAltB);
+    ui_.frame(sx, iy, slot.width, is + 16, 1, th.lineR, th.lineG, th.lineB);
+    // Rótulo (com ícone ocupa a parte de baixo; sem ícone fica centralizado)
+    const float labelY = slot.icon ? iy + is - 4 : iy + 11;
+    uiText(slot.label, sx + (slot.width - font_.textWidth(slot.label, 9)) / 2, labelY, 9,
+           slot.active ? th.accentTextR : th.inkSoftR, slot.active ? th.accentTextG : th.inkSoftG,
+           slot.active ? th.accentTextB : th.inkSoftB);
+    // Clique
+    if (clicked && mx >= sx && mx <= sx + slot.width && my >= iy && my <= iy + is + 16) {
+      switch (slot.action) {
+        case 0: newFromTemplate(0); break;
+        case 1: {
+          FILE* pipe = popen("zenity --file-selection --title='Abrir mapa .loom' 2>/dev/null | tr -d '\\n'", "r");
+          char buffer[1024] = {};
+          if (pipe && fgets(buffer, sizeof(buffer), pipe)) {
+            std::string chosen = buffer;
+            if (!chosen.empty()) { std::string err; if (!openLoom(chosen, err)) setStatus("Erro: " + err); addRecent(chosen); }
+          }
+          if (pipe) pclose(pipe);
+          break;
+        }
+        case 2: {
+          std::string err;
+          if (!filePath_.empty()) { if (saveLoom(filePath_, err)) addRecent(filePath_); else setStatus("Erro: " + err); }
+          else if (!saveWithDialog()) setStatus("Salvamento cancelado.");
+          break;
+        }
+        case 3: undo(); break;
+        case 4: redo(); break;
+        case 5:
+          if (playTestOpen_) endTestPlay();
+          else {
+            testPlayActive_ = false;
+            testPaused_ = false;
+            luaConsole_.clear();
+            addHistory("teste iniciado");
+            playTestOpen_ = true;
+          }
+          break;
+        case 6: if (testPaused_) resumeTestPlay(); else pauseTestPlay(); break;
+        case 7: restartTestPlay(); break;
+        case 8: activeTab_ = 1; break;
+        case 9: prefsDark_ = !prefsDark_; break;
+        default: break;
       }
-      if (pipe) pclose(pipe);
+    }
+    sx += slot.width + 6;
+  }
+
+  // Preferências (canto direito): fundo + rótulo; ícone na 2ª passada.
+  {
+    const float px = W - 112, py = 6;
+    ui_.rect(px, py, 104, is + 16, prefsOpen_ ? th.accentR : th.panelAltR,
+             prefsOpen_ ? th.accentG : th.panelAltG, prefsOpen_ ? th.accentB : th.panelAltB);
+    ui_.frame(px, py, 104, is + 16, 1, th.lineR, th.lineG, th.lineB);
+    uiText("prefs", px + (104 - font_.textWidth("prefs", 9)) / 2, py + 26, 9,
+           prefsOpen_ ? th.accentTextR : th.inkSoftR, prefsOpen_ ? th.accentTextG : th.inkSoftG,
+           prefsOpen_ ? th.accentTextB : th.inkSoftB);
+    if (clicked && buttonHit(mx, my, px, py, 104, is + 16)) prefsOpen_ = !prefsOpen_;
+  }
+
+  // ===== 2ª passada: ícones PNG por cima dos fundos (posições da tabela) =====
+  if (icons_.ready()) {
+    float ix2 = fx + fw + 12;
+    for (const TopSlot& slot : slots) {
+      if (slot.icon && icons_.has(slot.icon)) {
+        ui_.flush();
+        const float iconSize = 17;
+        icons_.draw(ui_, slot.icon, ix2 + (slot.width - iconSize) / 2, iy + 2, iconSize);
+      }
+      ix2 += slot.width + 6;
+    }
+    if (icons_.has("prefs")) {
+      ui_.flush();
+      icons_.draw(ui_, "prefs", W - 112 + (104 - 17) / 2, 8, 17);
     }
   }
-  {
-    const float bx = next();
-    topButton("save", "salvar", bx, is + 14, false);
-    if (inButton(bx, is + 14)) {
-      std::string err;
-      if (!filePath_.empty()) { if (saveLoom(filePath_, err)) addRecent(filePath_); else setStatus("Erro: " + err); }
-      else if (!saveWithDialog()) setStatus("Salvamento cancelado.");
+}
+
+// ---- abas Cena/Scripts + Play (faixa entre a topbar e o viewport) ----
+void EditorApp::drawTabs(int fbw, int fbh, const Theme& th) {
+  if (confirmExit_ || prefsOpen_) return;
+  const LayoutRects lay = layout();
+  const float x = static_cast<float>(lay.leftW) + 4;
+  const float y = static_cast<float>(lay.topbarH) + 3;
+  const float tabW = 84, tabH = 24;
+
+  double mx, my;
+  glfwGetCursorPos(window_, &mx, &my);
+  const bool down = glfwGetMouseButton(window_, GLFW_MOUSE_BUTTON_LEFT) == GLFW_PRESS;
+  const bool clicked = down && !mouseWasDown_;
+
+  const char* names[] = {"Cena", "Scripts"};
+  for (int tab = 0; tab < 2; ++tab) {
+    const float bx = x + tab * (tabW + 4);
+    const bool active = activeTab_ == tab;
+    ui_.rect(bx, y, tabW, tabH, active ? th.accentR : th.panelAltR, active ? th.accentG : th.panelAltG,
+             active ? th.accentB : th.panelAltB);
+    ui_.frame(bx, y, tabW, tabH, 1, th.lineR, th.lineG, th.lineB);
+    uiText(names[tab], bx + (tabW - font_.textWidth(names[tab], 12)) / 2, y + 6, 12,
+           active ? th.accentTextR : th.inkR, active ? th.accentTextG : th.inkG, active ? th.accentTextB : th.inkB);
+    if (clicked && buttonHit(mx, my, bx, y, tabW, tabH)) {
+      activeTab_ = tab;
+      scriptPanelSel_ = -1;
     }
   }
+
+  // Play (executa a simulação no viewport)
   {
-    const float bx = next();
-    topButton(nullptr, "undo", bx, is + 14, false);
-    if (inButton(bx, is + 14)) undo();
-  }
-  {
-    const float bx = next();
-    topButton(nullptr, "refazer", bx, is + 14, false);
-    if (inButton(bx, is + 14)) redo();
-  }
-  // Simulação: executar / pausar / parar (estados reais do mini-client)
-  {
-    const float bx = next();
-    topButton(nullptr, playTestOpen_ ? "parar" : "play", bx, is + 14, playTestOpen_);
-    if (inButton(bx, is + 14)) {
+    const float bx = x + 2 * (tabW + 4) + 8;
+    const float bw = 62;
+    ui_.rect(bx, y, bw, tabH, playTestOpen_ ? th.accentR : th.selR, playTestOpen_ ? th.accentG : th.selG,
+             playTestOpen_ ? th.accentB : th.selB);
+    ui_.frame(bx, y, bw, tabH, 1, th.lineR, th.lineG, th.lineB);
+    const char* label = playTestOpen_ ? "parar" : "play";
+    uiText(label, bx + (bw - font_.textWidth(label, 12)) / 2, y + 6, 12, 1.f, 1.f, 1.f);
+    if (clicked && buttonHit(mx, my, bx, y, bw, tabH)) {
       if (playTestOpen_) {
         endTestPlay();
       } else {
-        // Sempre começa um teste novo, não pausado e do spawn.
         testPlayActive_ = false;
         testPaused_ = false;
         luaConsole_.clear();
@@ -197,75 +279,97 @@ void EditorApp::drawTopbar(int fbw, int fbh, const Theme& th) {
         playTestOpen_ = true;
       }
     }
-    const float bx2 = next();
-    topButton(nullptr, testPaused_ ? "retomar" : "pausar", bx2, is + 14, testPaused_);
-    if (inButton(bx2, is + 14)) {
-      if (testPaused_) resumeTestPlay(); else pauseTestPlay();
-    }
-    const float bx3 = next();
-    topButton(nullptr, "reiniciar", bx3, is + 14, false);
-    if (inButton(bx3, is + 14)) restartTestPlay();
   }
-  {
-    const float bx = next();
-    topButton("lua", "scripts", bx, is + 14, activeTab_ == 1);
-    if (inButton(bx, is + 14)) activeTab_ = 1;
-  }
-  {
-    const float bx = next();
-    topButton("theme", prefsDark_ ? "escuro" : "claro", bx, is + 14, prefsDark_);
-    if (inButton(bx, is + 14)) prefsDark_ = !prefsDark_;
-  }
-  ix += 8;
 
-
-  // Preferências no canto direito
-  {
-    const float px = W - 116, py = 6;
-    ui_.rect(px, py, 108, fh, prefsOpen_ ? th.accentR : th.panelAltR, prefsOpen_ ? th.accentG : th.panelAltG, prefsOpen_ ? th.accentB : th.panelAltB);
-    ui_.frame(px, py, 108, fh, 1, th.lineR, th.lineG, th.lineB);
-    uiText("Preferências", px + 14, py + 10, 12, prefsOpen_ ? th.accentTextR : th.inkR, prefsOpen_ ? th.accentTextG : th.inkG, prefsOpen_ ? th.accentTextB : th.inkB);
-    if (clicked && buttonHit(mx, my, px, py, 108, fh)) prefsOpen_ = !prefsOpen_;
-    if (prefsOpen_) drawPrefs(px, py + fh + 4);
+  // Indicador de estado da simulação
+  if (playTestOpen_) {
+    const float sx = x + 2 * (tabW + 4) + 78;
+    const char* state = testPaused_ ? "pausado" : "executando";
+    uiText(std::string("● ") + state, sx, y + 6, 11, testPaused_ ? 0.85f : 0.3f, testPaused_ ? 0.7f : 0.8f, 0.25f);
   }
 }
 
 // ---- rail vertical de ferramentas (esquerda) ----
 void EditorApp::drawToolRail(int fbw, int fbh, const Theme& th) {
-  if (confirmExit_) return;
+  if (confirmExit_ || prefsOpen_) return;
   const LayoutRects lay = layout();
-  const float x = 4, y = static_cast<float>(lay.topbarH) + 4;
-  const float s = 36, gap = 4;
-  ui_.rect(x, y, s + 8, 6 * (s + gap) + 8, th.panelR, th.panelG, th.panelB);
-  ui_.frame(x, y, s + 8, 6 * (s + gap) + 8, 1, th.lineR, th.lineG, th.lineB);
+  const float x = 4, y = static_cast<float>(lay.topbarH) + 6;
+  const float s = 34, gap = 4;
+  const float panelH = 6 * s + 5 * gap + 8;
 
   double mx, my;
   glfwGetCursorPos(window_, &mx, &my);
   const bool down = glfwGetMouseButton(window_, GLFW_MOUSE_BUTTON_LEFT) == GLFW_PRESS;
   const bool clicked = down && !mouseWasDown_;
 
-  const char* names[] = {"Select", "Add", "Move", "Scale", "Paint", "Erase"};
-  // Ordem visual da referência: select, add, move, scale, paint, erase.
+  const char* names[] = {"Add", "Select", "Move", "Scale", "Paint", "Erase"};
   const int toolOrder[6] = {1, 0, 2, 3, 4, 5};
+  const char* iconNames[] = {"select", "add", "move", "scale", "paint", "erase"};
+
+  // ===== 1ª passada: fundo do painel + fundos dos botões + cliques =====
+  // A coluna inteira (do topo até a status bar) é a barra lateral.
+  const float columnH = static_cast<float>(fbh - lay.topbarH - UI_STATUS_H) - 6.f;
+  ui_.rect(x, y, s + 8, columnH, th.panelR, th.panelG, th.panelB);
+  ui_.frame(x, y, s + 8, columnH, 1, th.lineR, th.lineG, th.lineB);
+  // Divisória entre grupos de ferramentas (criação x transformação x pintura).
+  for (int after : {1, 3}) {
+    const float dy = y + 4 + after * (s + gap) - gap / 2.f;
+    ui_.rect(x + 8, dy, s - 8, 1, th.lineR, th.lineG, th.lineB);
+  }
+  (void)panelH;
+
   float ty = y + 4;
   for (int entry = 0; entry < 6; ++entry) {
     const int tool = toolOrder[entry];
     const bool active = tool_ == tool;
     const float bx = x + 4;
-    bool hitBtn = iconButton(ui_, mx, my, clicked, bx, ty, s, active, th);
-    const char* iconNames[] = {"add", "select", "move", "scale", "paint", "erase"};
-    drawIcon(ui_, icons_, iconNames[tool], bx, ty, s, th);
-    switch (tool) {
-      case 1: iconSelect(ui_, bx + 4, ty + 4, s - 8, th); break;
-      case 0: ui_.rect(bx + s * 0.32f, ty + 4, s * 0.36f, s * 0.36f, th.inkR, th.inkG, th.inkB); break;  // add: bloco
-      case 2: iconMove(ui_, bx + 4, ty + 4, s - 8, th); break;
-      case 3: iconScale(ui_, bx + 4, ty + 4, s - 8, th); break;
-      case 4: iconPaint(ui_, bx + 4, ty + 4, s - 8, th); break;
-      case 5: iconErase(ui_, bx + 4, ty + 4, s - 8, th); break;
-      default: break;
+    ui_.rect(bx, ty, s, s, active ? th.accentR : th.panelAltR, active ? th.accentG : th.panelAltG,
+             active ? th.accentB : th.panelAltB);
+    ui_.frame(bx, ty, s, s, 1, th.lineR, th.lineG, th.lineB);
+    if (clicked && mx >= bx && mx <= bx + s && my >= ty && my <= ty + s) {
+      tool_ = tool;
+      setStatus(std::string("Ferramenta: ") + names[tool]);
     }
-    if (hitBtn) { tool_ = tool; setStatus(std::string("Ferramenta: ") + names[tool]); }
     ty += s + gap;
+  }
+
+  // Flush dos fundos — AQUI o batch é desenhado, então os ícones ficam por cima.
+  ui_.flush();
+
+  // ===== 2ª passada: fallbacks vetoriais primeiro (batch), flush, PNGs =====
+  ty = y + 4;
+  for (int entry = 0; entry < 6; ++entry) {
+    const int tool = toolOrder[entry];
+    const float bx = x + 4;
+    // Pula os que têm PNG, MAS sempre avança ty (o `continue` antigo quebrava
+    // o alinhamento e desenhava paint/erase sobre os primeiros botões).
+    if (!(icons_.ready() && icons_.has(iconNames[tool]))) {
+      switch (tool) {
+        case 1: iconSelect(ui_, bx + 4, ty + 4, s - 8, th); break;
+        case 0: ui_.rect(bx + s * 0.3f, ty + s * 0.3f, s * 0.4f, s * 0.4f, th.inkR, th.inkG, th.inkB); break;
+        case 2: iconMove(ui_, bx + 4, ty + 4, s - 8, th); break;
+        case 3: iconScale(ui_, bx + 4, ty + 4, s - 8, th); break;
+        case 4: uiText("P", bx + s * 0.32f, ty + s * 0.24f, 15, th.inkR, th.inkG, th.inkB); break;
+        case 5: uiText("X", bx + s * 0.32f, ty + s * 0.24f, 15, th.inkR, th.inkG, th.inkB); break;
+        default: break;
+      }
+    }
+    ty += s + gap;
+  }
+  ui_.flush();  // desenha todos os fallbacks de uma vez
+
+  // ===== 3ª passada: PNGs (cada um com seu shader) ===== 
+  if (icons_.ready()) {
+    ty = y + 4;
+    for (int entry = 0; entry < 6; ++entry) {
+      const int tool = toolOrder[entry];
+      const float bx = x + 4;
+      if (icons_.has(iconNames[tool])) {
+        ui_.flush();
+        icons_.draw(ui_, iconNames[tool], bx + 5, ty + 5, s - 10);
+      }
+      ty += s + gap;
+    }
   }
 }
 
@@ -288,25 +392,27 @@ void EditorApp::drawHierarchy(int fbw, int fbh, const Theme& th) {
   const bool clicked = down && !mouseWasDown_;
 
   // ===== inserção de primitivas (linha de botões) =====
+  // Botões de primitiva: grade 2x2 que caiba na largura do painel.
   const char* primNames[] = {"+ caixa", "+ esfera", "+ cilindro", "+ luz"};
-  float px = x + 8;
+  const float btnW = (w - 24) / 2.f;
   for (int index = 0; index < 4; ++index) {
-    ui_.rect(px, y + 26, 74, 20, th.panelAltR, th.panelAltG, th.panelAltB);
-    ui_.frame(px, y + 26, 74, 20, 1, th.lineR, th.lineG, th.lineB);
-    uiText(primNames[index], px + 8, y + 31, 10, th.inkR, th.inkG, th.inkB);
-    if (clicked && buttonHit(mx, my, px, y + 26, 74, 20)) {
+    const float px = x + 8 + (index % 2) * (btnW + 8);
+    const float py = y + 26 + (index / 2) * 22.f;
+    ui_.rect(px, py, btnW, 19, th.panelAltR, th.panelAltG, th.panelAltB);
+    ui_.frame(px, py, btnW, 19, 1, th.lineR, th.lineG, th.lineB);
+    uiText(primNames[index], px + 8, py + 5, 10, th.inkR, th.inkG, th.inkB);
+    if (clicked && buttonHit(mx, my, px, py, btnW, 19)) {
       if (index == 3) addLight(); else addObjectPrimitive(index);
     }
-    px += 78;
   }
 
   // ===== busca =====
   const bool searchActive = !hierarchyFilter_.empty();
-  ui_.rect(x + 8, y + 52, w - 16, 20, th.panelAltR, th.panelAltG, th.panelAltB);
-  ui_.frame(x + 8, y + 52, w - 16, 20, 1, th.lineR, th.lineG, th.lineB);
+  ui_.rect(x + 8, y + 74, w - 16, 20, th.panelAltR, th.panelAltG, th.panelAltB);
+  ui_.frame(x + 8, y + 74, w - 16, 20, 1, th.lineR, th.lineG, th.lineB);
   uiText(searchActive ? ("busca: " + hierarchyFilter_) : "buscar objetos...",
-         x + 14, y + 56, 10, searchActive ? th.inkR : th.inkSoftR, searchActive ? th.inkG : th.inkSoftG, searchActive ? th.inkB : th.inkSoftB);
-  if (clicked && buttonHit(mx, my, x + 8, y + 52, w - 16, 20)) {
+         x + 14, y + 78, 10, searchActive ? th.inkR : th.inkSoftR, searchActive ? th.inkG : th.inkSoftG, searchActive ? th.inkB : th.inkSoftB);
+  if (clicked && buttonHit(mx, my, x + 8, y + 74, w - 16, 20)) {
     FILE* pipe = popen("zenity --entry --title='Buscar objetos' --text='Nome/grupo:' 2>/dev/null | tr -d '\n'", "r");
     char buffer[64] = {};
     if (pipe && fgets(buffer, sizeof(buffer), pipe)) hierarchyFilter_ = buffer;
@@ -315,8 +421,8 @@ void EditorApp::drawHierarchy(int fbw, int fbh, const Theme& th) {
   }
 
   // ===== lista =====
-  float ly = y + 80;
-  const int maxShow = static_cast<int>((h - 92) / 20.f);
+  float ly = y + 100;
+  const int maxShow = static_cast<int>((h - 112) / 20.f);
   int shown = 0;
   if (blockHidden_.size() != world_.blocks.size()) blockHidden_.resize(world_.blocks.size(), false);
   if (blockLocked_.size() != world_.blocks.size()) blockLocked_.resize(world_.blocks.size(), false);
@@ -337,31 +443,54 @@ void EditorApp::drawHierarchy(int fbw, int fbh, const Theme& th) {
 
     // ícone colorido
     ui_.rect(x + 10, ly + 4, 10, 10, block.color.r / 255.f, block.color.g / 255.f, block.color.b / 255.f);
-    // nome com estado
-    char label[96];
-    std::snprintf(label, sizeof(label), "Part%zu%s%s", index + 1,
-                  blockHidden_[index] ? " (oculto)" : "", blockLocked_[index] ? " [travado]" : "");
-    uiText(label, x + 28, ly + 4, 11, selected ? th.inkR : th.inkSoftR, selected ? th.inkG : th.inkSoftG, selected ? th.inkB : th.inkSoftB);
-    // grupo à direita
-    uiText(group, x + w - 66, ly + 4, 9, th.inkSoftR, th.inkSoftG, th.inkSoftB);
-    // clique: seleciona (se não travado)
-    if (clicked && buttonHit(mx, my, x, ly, w - 52, 18)) {
+    // nome (truncado para não invadir o grupo)
+    char label[64];
+    std::snprintf(label, sizeof(label), "Part%zu", index + 1);
+    const std::string name = label;
+    std::string shownName = name;
+    const float nameMax = w - 118;
+    while (font_.textWidth(shownName, 11) > nameMax && shownName.size() > 4) shownName.pop_back();
+    uiText(shownName, x + 28, ly + 4, 11, blockHidden_[index] ? th.inkSoftR : (selected ? th.inkR : th.inkSoftR),
+           blockHidden_[index] ? th.inkSoftG : (selected ? th.inkG : th.inkSoftG),
+           blockHidden_[index] ? th.inkSoftB : (selected ? th.inkB : th.inkSoftB));
+
+    // grupo (truncado)
+    std::string shownGroup = group;
+    while (font_.textWidth(shownGroup, 9) > 56 && shownGroup.size() > 3) shownGroup.pop_back();
+    uiText(shownGroup, x + w - 102, ly + 4, 9, th.inkSoftR, th.inkSoftG, th.inkSoftB);
+
+    // clique no nome: seleciona (se não travado)
+    if (clicked && buttonHit(mx, my, x, ly, w - 60, 18)) {
       if (blockLocked_[index]) {
-        setStatus("Objeto " + std::to_string(index) + " está travado — destrave na hierarquia.");
+        setStatus("Objeto " + std::to_string(index) + " travado — destrave para editar.");
       } else {
         selected_ = static_cast<int>(index);
         selection_.clear();
         selection_.push_back(selected_);
       }
     }
-    // botões de estado (olho/cadeado simplificados: O/L)
+
+    // pastilhas de estado H/L: logo após o grupo, com cor viva quando ativas
     {
-      const float bx = x + w - 52;
-      uiText(blockHidden_[index] ? "[oc]o" : "[oc]", bx, ly + 4, 9, th.inkSoftR, th.inkSoftG, th.inkSoftB);
-      if (clicked && buttonHit(mx, my, bx, ly, 24, 18)) toggleHidden(static_cast<int>(index));
-      const float bx2 = bx + 26;
-      uiText(blockLocked_[index] ? "[trv]*" : "[trv]", bx2, ly + 4, 9, th.inkSoftR, th.inkSoftG, th.inkSoftB);
-      if (clicked && buttonHit(mx, my, bx2, ly, 24, 18)) toggleLocked(static_cast<int>(index));
+      const float bx = x + w - 50;
+      // H — oculto
+      ui_.rect(bx, ly + 3, 18, 13, blockHidden_[index] ? 0.78f : th.panelAltR,
+               blockHidden_[index] ? 0.52f : th.panelAltG, blockHidden_[index] ? 0.15f : th.panelAltB);
+      ui_.frame(bx, ly + 3, 18, 13, 1, blockHidden_[index] ? 0.78f : th.lineR,
+                blockHidden_[index] ? 0.52f : th.lineG, blockHidden_[index] ? 0.15f : th.lineB);
+      uiText("H", bx + 6, ly + 5, 9, blockHidden_[index] ? 1.f : th.inkSoftR,
+             blockHidden_[index] ? 1.f : th.inkSoftG, blockHidden_[index] ? 1.f : th.inkSoftB);
+      if (clicked && buttonHit(mx, my, bx, ly + 2, 20, 14)) toggleHidden(static_cast<int>(index));
+
+      // L — travado
+      const float bx2 = bx + 21;
+      ui_.rect(bx2, ly + 3, 18, 13, blockLocked_[index] ? 0.72f : th.panelAltR,
+               blockLocked_[index] ? 0.22f : th.panelAltG, blockLocked_[index] ? 0.18f : th.panelAltB);
+      ui_.frame(bx2, ly + 3, 18, 13, 1, blockLocked_[index] ? 0.72f : th.lineR,
+                blockLocked_[index] ? 0.22f : th.lineG, blockLocked_[index] ? 0.18f : th.lineB);
+      uiText("L", bx2 + 6, ly + 5, 9, blockLocked_[index] ? 1.f : th.inkSoftR,
+             blockLocked_[index] ? 1.f : th.inkSoftG, blockLocked_[index] ? 1.f : th.inkSoftB);
+      if (clicked && buttonHit(mx, my, bx2, ly + 2, 20, 14)) toggleLocked(static_cast<int>(index));
     }
     ly += 20;
     ++shown;

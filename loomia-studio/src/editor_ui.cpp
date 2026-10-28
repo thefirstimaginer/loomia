@@ -39,282 +39,14 @@ int EditorApp::buttonHit(double mx, double my, float x, float y, float w, float 
 
 // ------------------------------------------------------------------ loop
 
-void EditorApp::drawUi(int fbw, int fbh) {
-  const float W = static_cast<float>(fbw), H = static_cast<float>(fbh);
-  double mx, my;
-  glfwGetCursorPos(window_, &mx, &my);
-  const bool down = glfwGetMouseButton(window_, GLFW_MOUSE_BUTTON_LEFT) == GLFW_PRESS;
-  const bool clicked = down && !mouseWasDown_;
-
-  // ---------- abas Cena/Scripts (abaixo da toolbar) ----------
-  {
-    const float tabY = static_cast<float>(UI_BAR_H) + 6.f;
-    const float tabW = 96.f, tabH = 34.f;
-    float tabX = 12.f;
-    const char* tabNames[] = {"Cena", "Scripts"};
-    for (int tab = 0; tab < 2; ++tab) {
-      const bool active = activeTab_ == tab;
-      ui_.rect(tabX, tabY, tabW, tabH, active ? 0.91f : 0.99f, active ? 0.71f : 0.99f, active ? 0.17f : 1.f);
-      ui_.frame(tabX, tabY, tabW, tabH, 2, 0.08f, 0.12f, 0.17f);
-      uiText(tabNames[tab], tabX + (tabW - font_.textWidth(tabNames[tab], 14)) / 2, tabY + 10, 14,
-             active ? 0.15f : 0.35f, active ? 0.12f : 0.4f, 0.02f);
-      if (clicked && buttonHit(mx, my, tabX, tabY, tabW, tabH)) {
-        activeTab_ = tab;
-        scriptPanelSel_ = -1;
-      }
-      tabX += tabW + 6.f;
-    }
-
-    // Botão Play (janela separada, mesma engine; Ctrl+P também dispara)
-    {
-      const float px = tabX + 14.f;
-      ui_.rect(px, tabY, 92.f, tabH, 0.91f, 0.71f, 0.17f);
-      ui_.frame(px, tabY, 92.f, tabH, 2, 0.08f, 0.12f, 0.17f);
-      uiText("▶ Play", px + (92.f - font_.textWidth("▶ Play", 14)) / 2, tabY + 10, 14, 0.15f, 0.12f, 0.f);
-      if (clicked && buttonHit(mx, my, px, tabY, 92.f, tabH)) runPlayTest();
-    }
-
-    // Sidebar adaptável (abaixo das abas, ao lado da área de trabalho)
-    if (activeTab_ == 0) drawScenePanel(fbw, fbh);
-    else drawScriptsPanel(fbw, fbh);
-  }
-
-  // ---------- preferências (⚙, canto direito abaixo da toolbar) ----------
-  {
-    const float px = static_cast<float>(fbw) - 136.f, py = static_cast<float>(UI_BAR_H) + 6.f;
-    ui_.rect(px, py, 124.f, 34.f, 0.97f, 0.97f, 1.f);
-    ui_.frame(px, py, 124.f, 34.f, 2, 0.08f, 0.12f, 0.17f);
-    uiText("⚙ Opções", px + 26, py + 10, 13, 0.15f, 0.2f, 0.3f);
-    if (clicked && buttonHit(mx, my, px, py, 124.f, 34.f)) prefsOpen_ = !prefsOpen_;
-    // (popup desenhado no loop, centralizado)
-  }
-
-  // ---------- barra de ferramentas superior
-  const float barY = 0;
-  ui_.rect(0, barY, W, static_cast<float>(UI_BAR_H), 1.f, 0.99f, 0.96f);
-  ui_.frame(0, barY, W, static_cast<float>(UI_BAR_H), 2, 0.08f, 0.12f, 0.17f);
-
-  // ---------- menu Arquivo (dropdown)
-  {
-    const float fx = 12.f, fy = barY + 12.f, fw = 92.f, fh = 40.f;
-    ui_.rect(fx, fy, fw, fh, fileMenu_ ? 0.91f : 0.96f, fileMenu_ ? 0.71f : 0.96f, fileMenu_ ? 0.17f : 0.96f);
-    ui_.frame(fx, fy, fw, fh, 2, 0.08f, 0.12f, 0.17f);
-    uiText("Arquivo", fx + 16, fy + 12, 14, fileMenu_ ? 0.15f : 0.3f, fileMenu_ ? 0.12f : 0.35f, 0.02f);
-    if (clicked && buttonHit(mx, my, fx, fy, fw, fh)) fileMenu_ = !fileMenu_;
-
-    if (fileMenu_) {
-      const float mw = 220;
-      float my2 = fy + fh + 4;
-      struct Item { const char* label; int action; };
-      const Item items[] = {
-          {"Novo (Ctrl+N)", 0},
-          {"Abrir .loom", 1},
-          {"Salvar (Ctrl+S)", 2},
-          {"Salvar como...", 3},
-          {"Criar cópia...", 4},
-          {"Renomear mapa", 5},
-          {"Voltar ao início", 6},
-      };
-      for (const Item& item : items) {
-        ui_.rect(fx, my2, mw, 30, 1.f, 1.f, 1.f);
-        ui_.frame(fx, my2, mw, 30, 1, 0.5f, 0.55f, 0.6f);
-        uiText(item.label, fx + 12, my2 + 7, 13, 0.15f, 0.2f, 0.28f);
-        if (clicked && buttonHit(mx, my, fx, my2, mw, 30)) {
-          fileMenu_ = false;
-          switch (item.action) {
-            case 0: newFromTemplate(0); break;
-            case 1: {
-              FILE* pipe = popen("zenity --file-selection --title='Abrir mapa .loom' 2>/dev/null | tr -d '\n'", "r");
-              char buffer[1024] = {};
-              bool opened = false;
-              if (pipe && fgets(buffer, sizeof(buffer), pipe)) {
-                std::string chosen = buffer;
-                if (!chosen.empty()) {
-                  std::string err;
-                  if (openLoom(chosen, err)) { addRecent(chosen); opened = true; }
-                  else setStatus("Erro: " + err);
-                }
-              } else setStatus("Nenhum arquivo escolhido.");
-              if (pipe) pclose(pipe);
-              break;
-            }
-            case 2: {
-              if (!filePath_.empty()) {
-                std::string err;
-                if (saveLoom(filePath_, err)) addRecent(filePath_);
-                else setStatus("Erro ao salvar: " + err);
-              } else saveWithDialog();
-              break;
-            }
-            case 3: saveWithDialog(); break;
-            case 4: saveCopy(); break;
-            case 5: renameMap(); break;
-            case 6: backToWelcome(); break;
-          }
-        }
-        my2 += 34;
-      }
-
-      // Recentes
-      uiText("Recentes:", fx + 12, my2 + 6, 12, 0.5f, 0.55f, 0.6f);
-      my2 += 28;
-      if (recentList_.empty()) uiText("(vazio)", fx + 12, my2, 12, 0.6f, 0.65f, 0.7f);
-      for (const std::string& path : recentList_) {
-        // Mostra só o nome do arquivo.
-        const std::string name = path.substr(path.find_last_of('/') + 1);
-        ui_.rect(fx, my2, mw, 28, 0.97f, 0.97f, 1.f);
-        ui_.frame(fx, my2, mw, 28, 1, 0.6f, 0.65f, 0.7f);
-        uiText(name, fx + 12, my2 + 7, 12, 0.2f, 0.3f, 0.5f);
-        if (clicked && buttonHit(mx, my, fx, my2, mw, 28)) {
-          fileMenu_ = false;
-          std::string err;
-          if (openLoom(path, err)) setStatus("Mapa carregado: " + path);
-          else setStatus("Erro: " + err);
-        }
-        my2 += 32;
-      }
-    }
-  }
-
-  // ferramentas começam depois do menu Arquivo
-  const char* toolNames[] = {"1 Add", "2 Select", "3 Move", "4 Scale", "5 Paint", "6 Erase"};
-  for (int index = 0; index < 6; ++index) {
-    const float x = 118.f + index * 86.f;
-    const float y = barY + 12.f;
-    const bool active = tool_ == index;
-    ui_.rect(x, y, 80.f, 40.f, active ? 0.91f : 0.96f, active ? 0.71f : 0.96f, active ? 0.17f : 0.96f);
-    ui_.frame(x, y, 80.f, 40.f, 2, 0.08f, 0.12f, 0.17f);
-    uiText(toolNames[index], x + 10, y + 14, 13, active ? 0.15f : 0.3f, active ? 0.12f : 0.35f, 0.02f);
-    if (clicked && buttonHit(mx, my, x, y, 80.f, 40.f)) { tool_ = index; setStatus(std::string("Ferramenta: ") + toolNames[index]); }
-  }
-
-  // ---------- paleta de cores (10 básicas) — logo após as ferramentas
-  const unsigned char palette[][3] = {
-      {230, 120, 60}, {230, 190, 40}, {100, 160, 60}, {70, 150, 200}, {110, 80, 190},
-      {230, 230, 235}, {70, 70, 80}, {190, 60, 60},  {240, 160, 200}, {60, 200, 170}};
-  for (int index = 0; index < 10; ++index) {
-    const float x = 640.f + index * 30.f;
-    const float y = barY + 12.f;
-    const bool match = currentColor_[0] == palette[index][0] && currentColor_[1] == palette[index][1] && currentColor_[2] == palette[index][2];
-    ui_.rect(x, y, 24.f, 24.f, palette[index][0] / 255.f, palette[index][1] / 255.f, palette[index][2] / 255.f, 1.f);
-    ui_.frame(x, y, 24.f, 24.f, match ? 3.f : 1.f, 0.08f, 0.12f, 0.17f);
-    if (clicked && buttonHit(mx, my, x, y, 24.f, 24.f)) {
-      currentColor_[0] = palette[index][0]; currentColor_[1] = palette[index][1]; currentColor_[2] = palette[index][2];
-    }
-  }
-
-  // ---------- botão Cena (cor do céu) — após a paleta
-  {
-    const float x = 950.f, y = barY + 12.f;
-    ui_.rect(x, y, 76.f, 40.f, 0.96f, 0.96f, 0.96f);
-    ui_.frame(x, y, 76.f, 40.f, 2, 0.08f, 0.12f, 0.17f);
-    uiText("Cena (C)", x + 12, y + 14, 13, 0.3f, 0.35f, 0.42f);
-    if (clicked && buttonHit(mx, my, x, y, 76.f, 40.f)) sceneMenu_ = !sceneMenu_;
-  }
-
-  // ---------- botão "Mais cores" (dropdown 256 cores HSL) — após o Cena
-  {
-    const float x = 1036.f, y = barY + 12.f;
-    ui_.rect(x, y, 96.f, 40.f, colorPicker_ ? 0.91f : 0.96f, colorPicker_ ? 0.71f : 0.96f, colorPicker_ ? 0.17f : 0.96f);
-    ui_.frame(x, y, 96.f, 40.f, 2, 0.08f, 0.12f, 0.17f);
-    uiText("Mais cores", x + 12, y + 14, 13, colorPicker_ ? 0.15f : 0.3f, colorPicker_ ? 0.12f : 0.35f, 0.02f);
-    if (clicked && buttonHit(mx, my, x, y, 96.f, 40.f)) colorPicker_ = !colorPicker_;
-
-    if (colorPicker_) {
-      // Grid 16x16 de hue x value, saturação fixa (256 cores).
-      const float gw = 256.f, cell = gw / 16.f;
-      const float gx = x, gy = y + 46.f;
-      ui_.rect(gx - 4, gy - 4, gw + 8, gw + 8, 1.f, 1.f, 1.f);
-      ui_.frame(gx - 4, gy - 4, gw + 8, gw + 8, 2, 0.08f, 0.12f, 0.17f);
-      for (int row = 0; row < 16; ++row) {
-        for (int col = 0; col < 16; ++col) {
-          float rgb[3];
-          const float hue = col / 16.f;
-          const float val = 1.f - row / 15.f;
-          hslToRgb(hue, 0.8f, val, rgb);
-          ui_.rect(gx + col * cell, gy + row * cell, cell, cell, rgb[0] / 255, rgb[1] / 255, rgb[2] / 255);
-        }
-      }
-      // Clique escolhe a cor.
-      if (down && mx > gx && mx < gx + gw && my > gy && my < gy + gw) {
-        const int col = std::clamp(static_cast<int>((mx - gx) / cell), 0, 15);
-        const int row = std::clamp(static_cast<int>((my - gy) / cell), 0, 15);
-        float rgb[3];
-        hslToRgb(col / 16.f, 0.8f, 1.f - row / 15.f, rgb);
-        currentColor_[0] = static_cast<int>(rgb[0]);
-        currentColor_[1] = static_cast<int>(rgb[1]);
-        currentColor_[2] = static_cast<int>(rgb[2]);
-      }
-      // Fecha ao clicar fora do grid e fora do botão.
-      if (clicked && !(mx > gx - 4 && mx < gx + gw + 4 && my > gy - 4 && my < gy + gw + 4) &&
-          !buttonHit(mx, my, x, y, 96.f, 40.f)) {
-        colorPicker_ = false;
-      }
-    }
-  }
-
-  // ---------- linha de status
-  ui_.rect(0, H - UI_STATUS_H, W, static_cast<float>(UI_STATUS_H), 0.08f, 0.12f, 0.17f);
-  char left[256];
-  std::snprintf(left, sizeof(left), "%s %s  |  %zu blocos  |  %s", dirty_ ? "*" : " ", filePath_.empty() ? "(sem titulo)" : filePath_.c_str(), world_.blocks.size(), status_.c_str());
-  uiText(left, 10, H - UI_STATUS_H + 5, 13, 0.95f, 0.9f, 0.8f);
-
-  // ---------- atalhos globais (keyboard)
-  const bool ctrl = keys_[341] /*GLFW_KEY_LEFT_CONTROL*/ || keys_[345];
-  const bool shift = keys_[340] || keys_[344];
-  if (ctrl && keys_['Z']) { undo(); keys_['Z'] = false; }
-  if (ctrl && shift && keys_['Z']) { redo(); keys_['Z'] = false; }
-  if (ctrl && keys_['Y']) { redo(); keys_['Y'] = false; }
-  if (ctrl && keys_['D']) { duplicateSelection(); keys_['D'] = false; }
-  if (keys_[256] /*DELETE*/ || keys_[261] /*BACKSPACE*/) { deleteSelection(); keys_[256] = false; keys_[261] = false; }
-  if (keys_['G']) { snapSelection(); keys_['G'] = false; }
-  if (keys_['F']) { focusSelection(); keys_['F'] = false; }
-  if (keys_['C']) { sceneMenu_ = !sceneMenu_; keys_['C'] = false; }
-  if (keys_['X']) { gizmoAxis_ = 0; keys_['X'] = false; }
-  if (keys_['Y']) { gizmoAxis_ = 1; keys_['Y'] = false; }
-  if (keys_['Z']) { gizmoAxis_ = 2; keys_['Z'] = false; }
-  if (keys_['1']) { tool_ = 0; keys_['1'] = false; }
-  if (keys_['2']) { tool_ = 1; keys_['2'] = false; }
-  if (keys_['3']) { tool_ = 2; keys_['3'] = false; }
-  if (keys_['4']) { tool_ = 3; keys_['4'] = false; }
-  if (keys_['5']) { tool_ = 4; keys_['5'] = false; }
-  if (keys_['6']) { tool_ = 5; keys_['6'] = false; }
-
-  // Ctrl+S: salva (se tem caminho) ou abre dialog de salvar
-  if (ctrl && keys_['S']) {
-    keys_['S'] = false;
-    std::string target = filePath_;
-    if (target.empty()) {
-      FILE* pipe = popen("zenity --file-selection --save --confirm-overwrite --title='Salvar mapa .loom' 2>/dev/null | tr -d '\n'", "r");
-      char buffer2[1024] = {};
-      if (pipe && fgets(buffer2, sizeof(buffer2), pipe)) target = buffer2;
-      if (pipe) pclose(pipe);
-    }
-    if (!target.empty()) {
-      if (target.find(".loom") == std::string::npos) target += ".loom";
-      std::string err;
-      if (!saveLoom(target, err)) setStatus("Erro ao salvar: " + err);
-    }
-  }
-
-  // Ctrl+N: novo mapa (baseplate)
-  if (ctrl && keys_['N']) { keys_['N'] = false; newFromTemplate(0); }
-
-}
-
-// ---------------------------------------------------------------------------
-// Gizmos e menu de cena
-// ---------------------------------------------------------------------------
-
 void EditorApp::drawWelcome(int fbw, int fbh) {
   // Fundo suave
   ui_.rect(0, 0, static_cast<float>(fbw), static_cast<float>(fbh), 0.94f, 0.93f, 0.88f, 1.f);
   uiText("Loomia Studio", fbw / 2.f - font_.textWidth("Loomia Studio", 42) / 2, 100, 42, 0.08f, 0.12f, 0.17f);
   uiText("Crie e edite seus próprios mundos, depois, compartilhe com seus amigos!", fbw / 2.f - font_.textWidth("Crie e edite seus próprios mundos, depois, compartilhe com seus amigos!", 18) / 2, 160, 18, 0.3f, 0.35f, 0.42f);
 
-  // Cartões de template
-  const char* names[] = {"Baseplate", "Ilhas Flutuantes", "Obby (Parkour)", "Sala de Exposicao"};
-  const char* descs[] = {"piso limpo para comecar do zero", "tres ilhas no ceu com pontes", "plataformas suspensas", "salao com todos os materiais"};
+  // Cartões de template (APENAS o "papel" do card; texto vem depois das
+  // prévias 3D — ver drawWelcomeText, chamado após drawTemplatePreviews).
   const float cardW = 250, cardH = 180;
   const float startX = fbw / 2.f - (cardW * 4 + 40) / 2.f;
   for (int index = 0; index < 4; ++index) {
@@ -322,11 +54,8 @@ void EditorApp::drawWelcome(int fbw, int fbh) {
     const float y = 280;
     ui_.rect(x, y, cardW, cardH, 1.f, 1.f, 1.f);
     ui_.frame(x, y, cardW, cardH, 3, 0.08f, 0.12f, 0.17f);
-    // moldura da prévia (a imagem 3D é desenhada por drawTemplatePreviews)
-    ui_.frame(x + 16, y + 16, cardW - 32, 66, 2, 0.4f, 0.5f, 0.6f);
-    uiText(names[index], x + 16, y + 92, 16, 0.08f, 0.12f, 0.17f);
-    uiText(descs[index], x + 16, y + 116, 12, 0.35f, 0.4f, 0.46f);
-    uiText("[clique para comecar]", x + 16, y + 148, 12, 0.72f, 0.55f, 0.1f);
+    // área da prévia: fundo neutro (a cena 3D é desenhada por cima)
+    ui_.rect(x + 16, y + 16, cardW - 32, 66, 0.88f, 0.9f, 0.93f);
     // clique (com consumo — um widget por frame)
     double mx, my;
     glfwGetCursorPos(window_, &mx, &my);
@@ -336,6 +65,29 @@ void EditorApp::drawWelcome(int fbw, int fbh) {
       newFromTemplate(index);
       return;
     }
+  }
+
+  // Moldura das prévias por cima da cena 3D (só a borda).
+  for (int index = 0; index < 4; ++index) {
+    const float x = startX + index * (cardW + 10);
+    const float y = 280;
+    ui_.frame(x + 16, y + 16, cardW - 32, 66, 2, 0.4f, 0.5f, 0.6f);
+  }
+}
+
+// Texto dos cards — desenhado DEPOIS das prévias 3D para não ser coberto.
+void EditorApp::drawWelcomeText(int fbw, int fbh) {
+  const char* names[] = {"Baseplate", "Ilhas Flutuantes", "Obby (Parkour)", "Sala de Exposicao"};
+  const char* descs[] = {"piso limpo para comecar do zero", "tres ilhas no ceu com pontes",
+                         "plataformas suspensas", "salao com todos os materiais"};
+  const float cardW = 250, cardH = 180;
+  const float startX = fbw / 2.f - (cardW * 4 + 40) / 2.f;
+  for (int index = 0; index < 4; ++index) {
+    const float x = startX + index * (cardW + 10);
+    const float y = 280;
+    uiText(names[index], x + 16, y + 92, 16, 0.08f, 0.12f, 0.17f);
+    uiText(descs[index], x + 16, y + 116, 12, 0.35f, 0.4f, 0.46f);
+    uiText("[clique para comecar]", x + 16, y + 148, 12, 0.72f, 0.55f, 0.1f);
   }
 
   // Carregar arquivo

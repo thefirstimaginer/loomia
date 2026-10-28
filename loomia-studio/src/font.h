@@ -5,6 +5,8 @@
 #pragma once
 
 #include <string>
+#include <vector>
+#include <cmath>
 
 namespace loomia {
 
@@ -33,13 +35,25 @@ class UiFont {
     float bearingX = 0, bearingY = 0;
     float advance = 0;
   };
-  Glyph glyphs_[96] = {};   // ASCII 32..126 (índice = code - 32)
-  Glyph latin1_[96] = {};   // U+00A1..U+00FF (índice = code - 0xA1)
+  // Cache por tamanho: cada tamanho usado ganha seu próprio conjunto de
+  // glifos rasterizados nativamente (sem minificação = sem serrilhado).
+  struct SizeSet {
+    int pixelSize = 0;
+    Glyph ascii[96] = {};
+    Glyph latin1[96] = {};
+  };
+  std::vector<SizeSet> sizeSets_;
+  SizeSet* activeSet_ = nullptr;
 
   const Glyph* glyphFor(unsigned int codepoint) const;
+  bool ensureSize(int pixelSize);
 
   bool ready_ = false;
 
+  // FreeType: mantidos como void* e convertidos no .cpp (o header não inclui
+  // ft2build.h para não vazar a dependência).
+  void* ftLibrary_ = nullptr;
+  void* ftFace_ = nullptr;
   unsigned int vao_ = 0, vbo_ = 0, shader_ = 0;
   int uniformRes_ = -1;
   int uniformSampler_ = -1;

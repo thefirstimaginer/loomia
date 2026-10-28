@@ -358,6 +358,37 @@ bool EditorApp::initWindow(std::string& error) {
   // Renderer das prévias dos templates (contexto já é o corrente).
   loadRecents();
   std::string previewError;
+  // Ícones PNG: misc/icons/loomia-studio-icons. Resolve pelo LOOMIA_STUDIO_ROOT,
+  // subindo diretórios a partir do executável até achar a pasta.
+  {
+    std::vector<std::string> candidates;
+    if (const char* root = std::getenv("LOOMIA_STUDIO_ROOT")) {
+      candidates.push_back(std::string(root) + "/misc/icons/loomia-studio-icons");
+      candidates.push_back(std::string(root) + "/../misc/icons/loomia-studio-icons");
+    }
+    char exe[4096] = {};
+    const ssize_t len = readlink("/proc/self/exe", exe, sizeof(exe) - 1);
+    if (len > 0) {
+      std::string base(exe, static_cast<size_t>(len));
+      // Sobe até 6 níveis, testando "misc/..." em cada um.
+      for (int up = 0; up <= 6; ++up) {
+        const size_t slash = base.find_last_of('/');
+        if (slash == std::string::npos) break;
+        base = base.substr(0, slash);
+        candidates.push_back(base + "/misc/icons/loomia-studio-icons");
+      }
+    }
+    candidates.push_back("misc/icons/loomia-studio-icons");
+    candidates.push_back("../misc/icons/loomia-studio-icons");
+    std::string iconError;
+    for (const std::string& candidate : candidates) {
+      if (icons_.init(candidate, iconError)) {
+        iconsDir_ = candidate;
+        break;
+      }
+    }
+  }
+
   previewReady_ = previewRenderer_.init(previewError);
   return true;
 }
@@ -846,18 +877,25 @@ EditorResult EditorApp::run() {
     glDisable(GL_DEPTH_TEST);
     glEnable(GL_BLEND);
     glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+    // O overlay 2D usa o tamanho ATUAL do framebuffer (antes ficava preso ao
+    // tamanho do boot — com resize, os rects saíam fora da tela e só o texto
+    // aparecia, porque a fonte lê o viewport diretamente).
+    ui_.width = fbw_;
+    ui_.height = fbh_;
     th_ = theme();
     const Theme& currentTheme = th_;
     if (inEditor_) {
       // Painéis do shell (podem usar viewport/scissor — desenha antes da cena?
       // Não: a cena já foi desenhada; os painéis cobrem as margens).
       drawTopbar(fbw_, fbh_, currentTheme);
+      drawTabs(fbw_, fbh_, currentTheme);
       drawToolRail(fbw_, fbh_, currentTheme);
       drawHierarchy(fbw_, fbh_, currentTheme);
       drawProperties(fbw_, fbh_, currentTheme);
       drawAssetBrowser(fbw_, fbh_, currentTheme);
       drawViewportFrame(fbw_, fbh_, currentTheme);
       drawStatusLine(fbw_, fbh_, currentTheme);
+      ui_.rect(200, 200, 60, 60, 0.f, 1.f, 0.f, 1.f);  // DEBUG loop
       if (activeTab_ == 1) {
         drawLuaEditor(fbw_, fbh_, currentTheme);
         drawLuaCodeEditor(fbw_, fbh_, currentTheme);
@@ -874,9 +912,11 @@ EditorResult EditorApp::run() {
         flushText();
       }
     } else {
-      // Welcome: prévias 3D primeiro (viewport próprio), depois a UI 2D.
-      drawTemplatePreviews(fbw_, fbh_);
+      // Welcome: 1) papel dos cards (2D) 2) prévias 3D por cima 3) texto.
       drawWelcome(fbw_, fbh_);
+      ui_.flush();
+      drawTemplatePreviews(fbw_, fbh_);
+      drawWelcomeText(fbw_, fbh_);
       ui_.flush();
       flushText();
     }

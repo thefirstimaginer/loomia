@@ -48,14 +48,15 @@ struct Theme {
 struct LayoutRects {
   int fbw = 0, fbh = 0;
   int topbarH = 46;      // barra superior (menus + ícones)
+  int tabsH = 30;        // faixa de abas Cena/Scripts + Play
   int leftW = 44;        // sidebar de ferramentas (ícones verticais)
   int rightW = 280;      // hierarquia + propriedades (redimensionável)
-  int bottomH = 96;      // faixa de recursos + coordenadas
+  int bottomH = 118 + 26; // faixa de recursos + linha de status
 
   int viewportX() const { return leftW; }
-  int viewportY() const { return topbarH; }
+  int viewportY() const { return topbarH + tabsH; }
   int viewportW() const { return std::max(120, fbw - leftW - rightW); }
-  int viewportH() const { return std::max(120, fbh - topbarH - bottomH); }
+  int viewportH() const { return std::max(120, fbh - topbarH - tabsH - bottomH); }
 };
 
 constexpr int MIN_WINDOW_W = 1024;

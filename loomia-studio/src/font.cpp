@@ -99,11 +99,64 @@ bool UiFont::init(const std::string& ttfPath, std::string& error) {
   }
 
   // Rasteriza a 64px e escala no draw — boa qualidade em qualquer tamanho.
-  FT_Set_Pixel_Sizes(face, 0, 64);
-  // Rasteriza ASCII e Latin-1 (acentos). Índice: ASCII -> code-32, Latin-1 -> code-0xA1.
-  auto rasterize = [&](unsigned int codepoint, Glyph& out) {
-        if (FT_Load_Char(face, codepoint, FT_LOAD_RENDER | FT_LOAD_TARGET_NORMAL)) return;
-    const FT_GlyphSlot slot = face->glyph;
+  // Guarda a face para rasterizar sob demanda, por tamanho.
+  ftFace_ = face;
+  ftLibrary_ = library;
+  // Pré-aquece os tamanhos mais comuns da UI.
+  for (int size : {9, 10, 11, 12, 13, 14, 15, 16, 18, 20}) ensureSize(size);
+
+  shader_ = compileShader(FONT_VS, FONT_FS, error);
+  if (!shader_) return false;
+  uniformRes_ = glGetUniformLocation(shader_, "uResolution");
+  uniformSampler_ = glGetUniformLocation(shader_, "uText");
+  glGenVertexArrays(1, &vao_);
+  glGenBuffers(1, &vbo_);
+  ready_ = true;
+  return true;
+}
+
+void UiFont::destroy() {
+  for (SizeSet& set : sizeSets_) {
+    for (Glyph& glyph : set.ascii) {
+      if (glyph.texture) glDeleteTextures(1, &glyph.texture);
+    }
+    for (Glyph& glyph : set.latin1) {
+      if (glyph.texture) glDeleteTextures(1, &glyph.texture);
+    }
+  }
+  sizeSets_.clear();
+  activeSet_ = nullptr;
+  if (vbo_) glDeleteBuffers(1, &vbo_);
+  if (vao_) glDeleteVertexArrays(1, &vao_);
+  if (shader_) glDeleteProgram(shader_);
+  vao_ = vbo_ = shader_ = 0;
+  if (ftFace_) {
+    FT_Done_Face(static_cast<FT_Face>(ftFace_));
+    ftFace_ = nullptr;
+  }
+  if (ftLibrary_) {
+    FT_Done_FreeType(static_cast<FT_Library>(ftLibrary_));
+    ftLibrary_ = nullptr;
+  }
+  ready_ = false;
+}
+
+bool UiFont::ensureSize(int pixelSize) {
+  FT_Face face_ = static_cast<FT_Face>(ftFace_);
+  if (!face_) return false;
+  for (const SizeSet& set : sizeSets_) {
+    if (set.pixelSize == pixelSize) {
+      activeSet_ = const_cast<SizeSet*>(&set);
+      return true;
+    }
+  }
+  SizeSet fresh;
+  fresh.pixelSize = pixelSize;
+  FT_Set_Pixel_Sizes(face_, 0, static_cast<FT_UInt>(pixelSize));
+  auto build = [&](unsigned int codepoint, Glyph& out) {
+    // Hinting leve: bom encaixe na grade sem deformar as curvas.
+    if (FT_Load_Char(face_, codepoint, FT_LOAD_RENDER | FT_LOAD_TARGET_LIGHT)) return;
+    const FT_GlyphSlot slot = face_->glyph;
     const unsigned int w = slot->bitmap.width;
     const unsigned int h = slot->bitmap.rows;
     out.advance = static_cast<float>(slot->advance.x >> 6);
@@ -120,7 +173,9 @@ bool UiFont::init(const std::string& ttfPath, std::string& error) {
     glGenTextures(1, &out.texture);
     glBindTexture(GL_TEXTURE_2D, out.texture);
     glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
-    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, static_cast<GLsizei>(w), static_cast<GLsizei>(h), 0, GL_RGBA, GL_UNSIGNED_BYTE, rgba.data());
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, static_cast<GLsizei>(w), static_cast<GLsizei>(h), 0, GL_RGBA,
+                 GL_UNSIGNED_BYTE, rgba.data());
+    // GL_LINEAR: alinhamento subpixel suave (sem serrilhado nas bordas)
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
@@ -128,42 +183,25 @@ bool UiFont::init(const std::string& ttfPath, std::string& error) {
     out.w = static_cast<float>(w);
     out.h = static_cast<float>(h);
   };
-  for (unsigned int code = 32; code < 128; ++code) rasterize(code, glyphs_[code - 32]);
-  for (unsigned int code = 0xA1; code < 0x100; ++code) rasterize(code, latin1_[code - 0xA1]);
-
-  FT_Done_Face(face);
-  FT_Done_FreeType(library);
-
-  shader_ = compileShader(FONT_VS, FONT_FS, error);
-  if (!shader_) return false;
-  uniformRes_ = glGetUniformLocation(shader_, "uResolution");
-  uniformSampler_ = glGetUniformLocation(shader_, "uText");
-  glGenVertexArrays(1, &vao_);
-  glGenBuffers(1, &vbo_);
-  ready_ = true;
+  for (unsigned int code = 32; code < 128; ++code) build(code, fresh.ascii[code - 32]);
+  for (unsigned int code = 0xA1; code < 0x100; ++code) build(code, fresh.latin1[code - 0xA1]);
+  sizeSets_.push_back(fresh);
+  activeSet_ = &sizeSets_.back();
   return true;
 }
 
-void UiFont::destroy() {
-  for (Glyph& glyph : glyphs_) {
-    if (glyph.texture) glDeleteTextures(1, &glyph.texture);
-  }
-  if (vbo_) glDeleteBuffers(1, &vbo_);
-  if (vao_) glDeleteVertexArrays(1, &vao_);
-  if (shader_) glDeleteProgram(shader_);
-  vao_ = vbo_ = shader_ = 0;
-  ready_ = false;
-}
-
 const UiFont::Glyph* UiFont::glyphFor(unsigned int codepoint) const {
-  if (codepoint >= 32 && codepoint < 128) return &glyphs_[codepoint - 32];
-  if (codepoint >= 0xA1 && codepoint < 0x100) return &latin1_[codepoint - 0xA1];
+  if (!activeSet_) return nullptr;
+  if (codepoint >= 32 && codepoint < 128) return &activeSet_->ascii[codepoint - 32];
+  if (codepoint >= 0xA1 && codepoint < 0x100) return &activeSet_->latin1[codepoint - 0xA1];
   return nullptr;
 }
 
 float UiFont::textWidth(const std::string& text, float size) const {
   if (!ready_) return static_cast<float>(text.size()) * size * 0.55f;
-  const float scale = size / 64.f;
+  const int pixelSize = std::max(6, static_cast<int>(std::lround(size)));
+  const_cast<UiFont*>(this)->ensureSize(pixelSize);
+  const float scale = size / static_cast<float>(pixelSize);
   float width = 0;
   for (size_t pos = 0; pos < text.size();) {
     unsigned int code = 0;
@@ -205,7 +243,10 @@ void UiFont::draw(const std::string& text, float x, float y, float size, float r
   glUniform2f(uniformRes_, static_cast<float>(width_), static_cast<float>(height_));
   glUniform1i(uniformSampler_, 0);
 
-  const float scale = size / 64.f;
+  // Rasteriza no tamanho EXATO de uso (arredondado) — sem minificação.
+  const int pixelSize = std::max(6, static_cast<int>(std::lround(size)));
+  ensureSize(pixelSize);
+  const float scale = size / static_cast<float>(pixelSize);
   float cursorX = x;
   const float baseline = y + size * 0.85f;  // y = topo aproximado da linha
   glUseProgram(shader_);
