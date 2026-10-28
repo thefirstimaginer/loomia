@@ -7,6 +7,7 @@ package main
 
 import (
 	"encoding/json"
+	"math"
 	"os"
 )
 
@@ -57,7 +58,7 @@ func LoadWorld(path string) (*World, error) {
 func (w *World) buildColliders() {
 	w.colliders = w.colliders[:0]
 	lowest := 0.0
-	first := true
+	found := false
 	for _, block := range w.Blocks {
 		if !block.solid() {
 			continue
@@ -69,10 +70,13 @@ func (w *World) buildColliders() {
 			box.Max[axis] = block.Position[axis] + half
 		}
 		w.colliders = append(w.colliders, box)
-		if first || box.Min[1] < lowest {
-			lowest = box.Min[1]
-			first = false
-		}
+		lowest = math.Min(lowest, box.Min[1])
+		found = true
+	}
+	// Sem nenhum bloco sólido, usa o spawn como referência: qualquer queda
+	// abaixo dele conta como "caiu do mundo" e o jogador volta ao início.
+	if !found {
+		lowest = w.Spawn[1]
 	}
 	// Abaixo disso o jogador "caiu do mundo" e volta ao spawn.
 	w.minY = lowest - 40

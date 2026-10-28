@@ -61,19 +61,23 @@ export async function findUserByLogin(login: string): Promise<RawUserRow | null>
   )
 }
 
+export type UserRole = 'player' | 'moderator' | 'admin'
+
 export async function createUser(input: {
   firstName: string
   lastName: string
   nickname: string
   email: string
   passwordHash: string
+  role?: UserRole
 }): Promise<RawUserRow> {
   try {
+    // O papel vai no mesmo INSERT: ou a conta nasce inteira, ou não nasce.
     const row = await one<RawUserRow>(
-      `INSERT INTO users (first_name, last_name, nickname, email, password_hash)
-       VALUES ($1, $2, $3, $4, $5)
+      `INSERT INTO users (first_name, last_name, nickname, email, password_hash, role)
+       VALUES ($1, $2, $3, $4, $5, $6)
        RETURNING *`,
-      [input.firstName, input.lastName, input.nickname, input.email, input.passwordHash],
+      [input.firstName, input.lastName, input.nickname, input.email, input.passwordHash, input.role ?? 'player'],
     )
     if (!row) throw new Error('insert sem retorno')
     return row

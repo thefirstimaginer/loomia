@@ -67,31 +67,8 @@ func (w *World) Step(old State, input Input, dt float64) State {
 	}
 
 	// --- Horizontal, separando cada eixo para deslizar nas paredes. ---
-	if !w.solidAt(s.Pos[0]+s.Vel[0]*dt, s.Pos[1], s.Pos[2], CharacterRadius) {
-		s.Pos[0] += s.Vel[0] * dt
-	} else {
-		// Degrau: tenta subir até StepHeight para pegar a saliência.
-		if ground, ok := w.highestBelow(
-			s.Pos[0]+s.Vel[0]*dt, s.Pos[1]+StepHeight, s.Pos[2], StepHeight,
-		); ok && !w.solidAt(s.Pos[0]+s.Vel[0]*dt, ground, s.Pos[2], CharacterRadius) {
-			s.Pos[0] += s.Vel[0] * dt
-			s.Pos[1] = ground
-		} else {
-			s.Vel[0] = 0
-		}
-	}
-	if !w.solidAt(s.Pos[0], s.Pos[1], s.Pos[2]+s.Vel[2]*dt, CharacterRadius) {
-		s.Pos[2] += s.Vel[2] * dt
-	} else {
-		if ground, ok := w.highestBelow(
-			s.Pos[0], s.Pos[1]+StepHeight, s.Pos[2]+s.Vel[2]*dt, StepHeight,
-		); ok && !w.solidAt(s.Pos[0], ground, s.Pos[2]+s.Vel[2]*dt, CharacterRadius) {
-			s.Pos[2] += s.Vel[2] * dt
-			s.Pos[1] = ground
-		} else {
-			s.Vel[2] = 0
-		}
-	}
+	s = w.moveAxis(s, 0, dt)
+	s = w.moveAxis(s, 2, dt)
 
 	// --- Vertical. ---
 	nextY := s.Pos[1] + s.Vel[1]*dt
@@ -118,6 +95,35 @@ func (w *World) Step(old State, input Input, dt float64) State {
 		}
 	}
 
+	return s
+}
+
+// moveAxis move o estado em um único eixo horizontal (0 = X, 2 = Z).
+//
+// Se o passo livre colidir, tenta subir o degrau (StepHeight); se também não
+// couber, zera a velocidade naquele eixo para deslizar na parede.
+func (w *World) moveAxis(s State, axis int, dt float64) State {
+	delta := s.Vel[axis] * dt
+	if delta == 0 {
+		return s
+	}
+
+	next := s.Pos
+	next[axis] += delta
+	if !w.solidAt(next[0], next[1], next[2], CharacterRadius) {
+		s.Pos = next
+		return s
+	}
+
+	// Degrau: tenta subir até StepHeight para pegar a saliência.
+	if ground, ok := w.highestBelow(next[0], s.Pos[1]+StepHeight, next[2], StepHeight); ok &&
+		!w.solidAt(next[0], ground, next[2], CharacterRadius) {
+		s.Pos = next
+		s.Pos[1] = ground
+		return s
+	}
+
+	s.Vel[axis] = 0
 	return s
 }
 

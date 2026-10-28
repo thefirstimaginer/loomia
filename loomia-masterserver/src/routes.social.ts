@@ -23,21 +23,14 @@ import {
   updateBio,
 } from './db/social.js'
 import { createReport } from './db/moderation.js'
+import { parseId, parseText } from './validate.js'
 
 const TICKET_CATEGORIES = ['client', 'account', 'gameplay', 'suggestion', 'other'] as const
 
-function text(value: unknown, field: string, min: number, max: number): string {
-  const result = typeof value === 'string' ? value.trim() : ''
-  if (result.length < min) throw new HttpError(400, `${field} é obrigatório`, 'invalid')
-  if (result.length > max) throw new HttpError(400, `${field} é longo demais`, 'invalid')
-  return result
-}
+const text = parseText
 
-function targetId(value: string | undefined): string {
-  const id = Number(value)
-  if (!Number.isInteger(id) || id <= 0) throw new HttpError(400, 'id de jogador inválido', 'invalid')
-  return String(id)
-}
+/** Id do jogador (perfil, amizade, conversa) vindo da URL ou do corpo. */
+const targetId = (value: string | undefined): string => parseId(value, 'id de jogador')
 
 export function createSocialApi(router: Router, guard: (ctx: RequestContext) => Promise<SessionUser>): void {
   // ------------------------------------------------------------------ perfil público
@@ -117,8 +110,10 @@ export function createSocialApi(router: Router, guard: (ctx: RequestContext) => 
   router.post(/^\/api\/friends\/requests$/, async (ctx) => {
     const user = await guard(ctx)
     const body = (await ctx.body()) as Record<string, unknown>
+    const friendId = targetId(String(body.targetId ?? ''))
+    if (friendId === user.id) throw new HttpError(400, 'não dá para adicionar você mesmo', 'invalid')
     const message = typeof body.message === 'string' ? body.message.trim().slice(0, 500) : ''
-    const request = await sendFriendRequest(user.id, targetId(String(body.targetId ?? '')), message)
+    const request = await sendFriendRequest(user.id, friendId, message)
     sendJson(ctx.res, 201, { request })
   })
 
