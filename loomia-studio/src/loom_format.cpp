@@ -264,6 +264,13 @@ std::string serializeLoom(const LoomDocument& doc) {
     json::set(*physics, "collision", json::makeBool(object.collision));
     json::set(*physics, "mass", json::makeNumber(object.mass));
     json::set(*entry, "physics", physics);
+    if (object.editorHidden || object.editorLocked || !object.editorGroup.empty()) {
+      auto editorMeta = json::makeObject();
+      json::set(*editorMeta, "hidden", json::makeBool(object.editorHidden));
+      json::set(*editorMeta, "locked", json::makeBool(object.editorLocked));
+      if (!object.editorGroup.empty()) json::set(*editorMeta, "group", json::makeString(object.editorGroup));
+      json::set(*entry, "editor", editorMeta);
+    }
     json::push(*objects, entry);
   }
   json::set(*root, "objects", objects);
@@ -379,6 +386,11 @@ bool loadLoom(const std::string& path, LoomDocument& doc, std::vector<LoomIssue>
         object.anchored = physics->flag("anchored", true);
         object.collision = physics->flag("collision", true);
         object.mass = static_cast<float>(physics->num("mass", 1.0));
+      }
+      if (const json::ValuePtr editorMeta = entry->get("editor")) {
+        object.editorHidden = editorMeta->flag("hidden", false);
+        object.editorLocked = editorMeta->flag("locked", false);
+        object.editorGroup = editorMeta->str("group", "");
       }
       doc.objects.push_back(object);
     }

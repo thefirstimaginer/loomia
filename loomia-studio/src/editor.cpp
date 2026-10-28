@@ -393,7 +393,13 @@ void EditorApp::undo() {
   redoStack_.push_back(world_);
   world_ = undoStack_.back();
   undoStack_.pop_back();
-  if (selected_ >= static_cast<int>(world_.blocks.size())) selected_ = -1;
+  syncBlockMeta();
+  const int count = static_cast<int>(world_.blocks.size());
+  if (selected_ >= count) selected_ = -1;
+  // A seleção múltipla pode apontar para índices que deixaram de existir.
+  selection_.erase(std::remove_if(selection_.begin(), selection_.end(),
+                                  [count](int index) { return index < 0 || index >= count; }),
+                   selection_.end());
   renderer_.upload(world_);
   dirty_ = true;
   setStatus("Desfeito.");
@@ -404,6 +410,12 @@ void EditorApp::redo() {
   undoStack_.push_back(world_);
   world_ = redoStack_.back();
   redoStack_.pop_back();
+  syncBlockMeta();
+  const int count = static_cast<int>(world_.blocks.size());
+  if (selected_ >= count) selected_ = -1;
+  selection_.erase(std::remove_if(selection_.begin(), selection_.end(),
+                                  [count](int index) { return index < 0 || index >= count; }),
+                   selection_.end());
   renderer_.upload(world_);
   dirty_ = true;
   setStatus("Refeito.");
@@ -453,6 +465,9 @@ RayHit EditorApp::pickBlock(double mouseX, double mouseY, int fbw, int fbh) {
   float bestT = 400.f;
   int bestIndex = -1;
   for (size_t index = 0; index < world_.blocks.size(); ++index) {
+    // Objetos travados ou ocultos não são selecionáveis pelo viewport.
+    if (index < blockLocked_.size() && blockLocked_[index]) continue;
+    if (index < blockHidden_.size() && blockHidden_[index]) continue;
     const Block& block = world_.blocks[index];
     Vec3 bmin, bmax;
     World::bounds(block, bmin, bmax);
@@ -691,7 +706,13 @@ EditorResult EditorApp::run() {
                 camTarget_.x + camDist_ * std::cos(camPitch_) * std::sin(camYaw_),
                 camTarget_.y + camDist_ * std::sin(camPitch_),
                 camTarget_.z + camDist_ * std::cos(camPitch_) * std::cos(camYaw_)};
-            const float aspect = static_cast<float>(fbw_) / static_cast<float>(fbh_ > 0 ? fbh_ : 1);
+            // Projeção no espaço do VIEWPORT (não da janela inteira).
+            const LayoutRects marqueeLay = layout();
+            const float mvx = static_cast<float>(marqueeLay.viewportX());
+            const float mvy = static_cast<float>(marqueeLay.viewportY());
+            const float mvW = static_cast<float>(marqueeLay.viewportW());
+            const float mvH = static_cast<float>(marqueeLay.viewportH());
+            const float aspect = mvW / (mvH > 0 ? mvH : 1);
             const float tanHalf = std::tan(radians(35.f));
             Vec3 forward = normalize(sub(camTarget_, eye));
             Vec3 right = normalize(cross(forward, {0, 1, 0}));
@@ -701,8 +722,8 @@ EditorResult EditorApp::run() {
             if (depth <= 0) continue;
             const Vec3 projected = forward * depth;
             const Vec3 flat = toBlock - projected;
-            const float sx = fbw_ / 2.f + (dot(flat, right) / (depth * tanHalf * aspect)) * (fbw_ / 2.f);
-            const float sy = fbh_ / 2.f - (dot(flat, up) / (depth * tanHalf)) * (fbh_ / 2.f);
+            const float sx = mvx + mvW / 2.f + (dot(flat, right) / (depth * tanHalf * aspect)) * (mvW / 2.f);
+            const float sy = mvy + mvH / 2.f - (dot(flat, up) / (depth * tanHalf)) * (mvH / 2.f);
             if (sx >= x0 && sx <= x1 && sy >= y0 && sy <= y1) selection_.push_back(static_cast<int>(index));
           }
           marqueeActive_ = false;
@@ -767,7 +788,25 @@ EditorResult EditorApp::run() {
       camera.position = eye;
       camera.target = camTarget_;
       const float aspect = static_cast<float>(vw) / static_cast<float>(vh > 0 ? vh : 1);
-      renderer_.draw(camera, aspect);
+      // Desenha o mundo SEM os objetos ocultos (cópia filtrada barata: só
+      // quando houver algum oculto).
+      bool anyHidden = false;
+      for (size_t index = 0; index < blockHidden_.size() && index < world_.blocks.size(); ++index) {
+        if (blockHidden_[index]) { anyHidden = true; break; }
+      }
+      if (anyHidden) {
+        World visible = world_;
+        visible.blocks.clear();
+        for (size_t index = 0; index < world_.blocks.size(); ++index) {
+          if (index < blockHidden_.size() && blockHidden_[index]) continue;
+          visible.blocks.push_back(world_.blocks[index]);
+        }
+        renderer_.upload(visible);
+        renderer_.draw(camera, aspect);
+        renderer_.upload(world_);  // restaura a malha completa para picking/etc.
+      } else {
+        renderer_.draw(camera, aspect);
+      }
 
       // Seleção: todos os blocos destacados com caixa maior semitransparente.
       for (const int index : selection_) {

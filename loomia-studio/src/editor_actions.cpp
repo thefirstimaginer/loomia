@@ -20,6 +20,7 @@ std::string recentsPath() {
 void EditorApp::newFromTemplate(int templateIndex) {
   const TemplateId ids[] = {TemplateId::Baseplate, TemplateId::SkyIslands, TemplateId::Obby, TemplateId::Showcase};
   world_ = makeTemplate(ids[std::clamp(templateIndex, 0, 3)]);
+  syncBlockMeta();
   filePath_.clear();
   dirty_ = false;
   selected_ = -1;
@@ -47,6 +48,13 @@ bool EditorApp::openLoom(const std::string& path, std::string& error) {
   if (migrated) setStatus("Formato antigo migrado para .loom v1.");
   world_ = loomToWorld(doc);
   loomDoc_ = doc;
+  syncBlockMeta();
+  // Restaura estado do editor (oculto/travado/grupo) salvo no arquivo.
+  for (size_t index = 0; index < doc.objects.size() && index < world_.blocks.size(); ++index) {
+    blockHidden_[index] = doc.objects[index].editorHidden;
+    blockLocked_[index] = doc.objects[index].editorLocked;
+    blockGroups_[index] = doc.objects[index].editorGroup;
+  }
   filePath_ = path;
   dirty_ = false;
   selected_ = -1;
@@ -56,16 +64,36 @@ bool EditorApp::openLoom(const std::string& path, std::string& error) {
   renderer_.upload(world_);
   inEditor_ = true;
   setStatus("Mapa carregado: " + path);
+  addHistory((migrated ? "aberto (migrado): " : "aberto: ") + path);
   return true;
 }
 
 bool EditorApp::saveLoom(const std::string& path, std::string& error) {
-  // Sempre salva no formato v1, preservando scripts/lógica carregados.
+  // Sempre salva no formato v1, preservando scripts/lógica carregados e o
+  // estado do editor (oculto/travado/grupo) por objeto.
+  syncBlockMeta();
+  // Preserva metadados que NÃO vêm do World: ids editoriais, lógica e scripts.
+  const std::vector<LoomObject> previousObjects = loomDoc_.objects;
+  const std::vector<LoomLogicEvent> previousLogic = loomDoc_.logic;
+  const std::vector<LoomScript> previousScripts = loomDoc_.scripts;
+
   loomDoc_ = worldToLoom(world_);
+  // Ids/vínculos: reutiliza os ids anteriores na mesma posição (estáveis).
+  for (size_t index = 0; index < loomDoc_.objects.size() && index < previousObjects.size(); ++index) {
+    if (!previousObjects[index].id.empty()) loomDoc_.objects[index].id = previousObjects[index].id;
+  }
+  for (size_t index = 0; index < loomDoc_.objects.size() && index < world_.blocks.size(); ++index) {
+    loomDoc_.objects[index].editorHidden = blockHidden_[index];
+    loomDoc_.objects[index].editorLocked = blockLocked_[index];
+    loomDoc_.objects[index].editorGroup = blockGroups_[index];
+  }
+  loomDoc_.logic = previousLogic;    // lógica não é derivável do World
+  loomDoc_.scripts = previousScripts;  // id/target/language/source preservados
   if (!saveLoomV1(path, loomDoc_, error)) return false;
   filePath_ = path;
   dirty_ = false;
   setStatus("Salvo em " + path + " (.loom v1)");
+  addHistory("salvo: " + path);
   return true;
 }
 
@@ -82,6 +110,7 @@ void EditorApp::deleteSelection() {
   for (const int index : selection_) {
     if (index >= 0 && index < static_cast<int>(world_.blocks.size())) {
       world_.blocks.erase(world_.blocks.begin() + index);
+      eraseBlockMeta(index);  // mantém hidden/locked/grupo alinhados
     }
   }
   setStatus(std::to_string(selection_.size()) + " bloco(s) removido(s) (Delete).");
@@ -103,6 +132,10 @@ void EditorApp::duplicateSelection() {
     Block copy = world_.blocks[static_cast<size_t>(index)];
     copy.position.z += copy.size.z;  // encosta na frente do original
     world_.blocks.push_back(copy);
+    syncBlockMeta();
+    blockHidden_.back() = blockHidden_[static_cast<size_t>(index)];
+    blockLocked_.back() = false;  // cópia nasce destravada
+    blockGroups_.back() = blockGroups_[static_cast<size_t>(index)];
   }
   // A seleção passa a apontar para as cópias (no fim do vetor).
   const int total = static_cast<int>(world_.blocks.size());

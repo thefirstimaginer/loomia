@@ -12,6 +12,7 @@
 namespace loomia {
 bool EditorApp::updateGizmoTryPick(double mx, double my) {
   if (selected_ < 0 || selected_ >= static_cast<int>(world_.blocks.size())) return false;
+  if (selected_ < static_cast<int>(blockLocked_.size()) && blockLocked_[static_cast<size_t>(selected_)]) return false;
   const Block& block = world_.blocks[static_cast<size_t>(selected_)];
 
   const Vec3 axes[3] = {{1, 0, 0}, {0, 1, 0}, {0, 0, 1}};

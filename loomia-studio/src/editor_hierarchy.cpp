@@ -13,6 +13,22 @@
 
 namespace loomia {
 
+// Garante que os vetores paralelos têm exatamente o tamanho do mundo.
+void EditorApp::syncBlockMeta() {
+  const size_t count = world_.blocks.size();
+  blockHidden_.resize(count, false);
+  blockLocked_.resize(count, false);
+  blockGroups_.resize(count);
+}
+
+// Remove a entrada de metadados de um bloco (mantém o alinhamento).
+void EditorApp::eraseBlockMeta(int index) {
+  if (index < 0) return;
+  if (static_cast<size_t>(index) < blockHidden_.size()) blockHidden_.erase(blockHidden_.begin() + index);
+  if (static_cast<size_t>(index) < blockLocked_.size()) blockLocked_.erase(blockLocked_.begin() + index);
+  if (static_cast<size_t>(index) < blockGroups_.size()) blockGroups_.erase(blockGroups_.begin() + index);
+}
+
 void EditorApp::toggleHidden(int index) {
   if (index < 0 || index >= static_cast<int>(world_.blocks.size())) return;
   if (blockHidden_.size() != world_.blocks.size()) blockHidden_.resize(world_.blocks.size(), false);

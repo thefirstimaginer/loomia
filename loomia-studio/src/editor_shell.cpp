@@ -186,7 +186,16 @@ void EditorApp::drawTopbar(int fbw, int fbh, const Theme& th) {
     const float bx = next();
     topButton(nullptr, playTestOpen_ ? "parar" : "play", bx, is + 14, playTestOpen_);
     if (inButton(bx, is + 14)) {
-      if (playTestOpen_) endTestPlay(); else playTestOpen_ = true;
+      if (playTestOpen_) {
+        endTestPlay();
+      } else {
+        // Sempre começa um teste novo, não pausado e do spawn.
+        testPlayActive_ = false;
+        testPaused_ = false;
+        luaConsole_.clear();
+        addHistory("teste iniciado");
+        playTestOpen_ = true;
+      }
     }
     const float bx2 = next();
     topButton(nullptr, testPaused_ ? "retomar" : "pausar", bx2, is + 14, testPaused_);

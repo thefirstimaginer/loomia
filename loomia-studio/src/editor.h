@@ -127,6 +127,9 @@ class EditorApp {
   std::vector<bool> blockHidden_;     // oculto no viewport (render skip)
   std::vector<bool> blockLocked_;     // bloqueado contra seleção/edição
   std::vector<std::string> blockGroups_;  // pasta/grupo do objeto
+  // Mantém os vetores paralelos alinhados ao mundo (chamar após mutações).
+  void syncBlockMeta();
+  void eraseBlockMeta(int index);
   int hierarchyScroll_ = 0;
 
   void addObjectPrimitive(int shapeKind);   // 0=box 1=sphere 2=cylinder

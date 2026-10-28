@@ -34,6 +34,10 @@ struct LoomObject {
   bool anchored = true;
   bool collision = true;
   float mass = 1.0f;
+  // Estado do editor (opcional; ignorado pelo jogo). Não altera física.
+  bool editorHidden = false;
+  bool editorLocked = false;
+  std::string editorGroup;
 };
 
 struct LoomScript {
