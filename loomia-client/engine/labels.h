@@ -1,6 +1,6 @@
 // Texto 2D sobre o mundo OpenGL (etiquetas de nome dos jogadores).
 //
-// O jogo desenha em OpenGL puro (GLFW), então não há texto do SFML na mesma
+// O jogo desenha em OpenGL puro (janela SFML), então não há texto do SFML na mesma
 // janela. Cada etiqueta é feita de glifos bitmap (5x7) desenhados como quads:
 // leve, sem atlas de textura e idêntico em qualquer GPU/plataforma.
 #pragma once

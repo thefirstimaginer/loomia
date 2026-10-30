@@ -5,7 +5,6 @@
 #include "editor.h"
 
 #include <glad/glad.h>
-#include <GLFW/glfw3.h>
 
 #include <cstdio>
 #include <fstream>
@@ -33,8 +32,9 @@ void EditorApp::drawScriptsPanel(int fbw, int fbh) {
   uiText("Scripts do mapa", x + 14, y + 12, 15, 0.08f, 0.12f, 0.17f);
 
   double mx, my;
-  glfwGetCursorPos(window_, &mx, &my);
-  const bool down = glfwGetMouseButton(window_, GLFW_MOUSE_BUTTON_LEFT) == GLFW_PRESS;
+  mx = static_cast<double>(sf::Mouse::getPosition(*window_).x);
+my = static_cast<double>(sf::Mouse::getPosition(*window_).y);
+  const bool down = sf::Mouse::isButtonPressed(sf::Mouse::Button::Left);
   const bool clicked = down && !mouseWasDown_;
 
   // Adicionar script

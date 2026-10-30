@@ -4,7 +4,6 @@
 #include "editor.h"
 
 #include <glad/glad.h>
-#include <GLFW/glfw3.h>
 
 #include <cstdio>
 #include <cstring>
@@ -54,8 +53,9 @@ void EditorApp::drawLuaCodeEditor(int fbw, int fbh, const Theme& th) {
   ui_.frame(x, y, w, h, 1, th.lineR, th.lineG, th.lineB);
 
   double mx, my;
-  glfwGetCursorPos(window_, &mx, &my);
-  const bool down = glfwGetMouseButton(window_, GLFW_MOUSE_BUTTON_LEFT) == GLFW_PRESS;
+  mx = static_cast<double>(sf::Mouse::getPosition(*window_).x);
+my = static_cast<double>(sf::Mouse::getPosition(*window_).y);
+  const bool down = sf::Mouse::isButtonPressed(sf::Mouse::Button::Left);
   const bool clicked = down && !mouseWasDown_;
 
   // ===== abas dos scripts =====

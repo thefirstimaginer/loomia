@@ -7,7 +7,7 @@
 #include "templates.h"
 
 #include <glad/glad.h>
-#include <GLFW/glfw3.h>
+#include <SFML/Window.hpp>
 
 #include <algorithm>
 #include <cmath>
@@ -284,50 +284,40 @@ EditorResult runStudio() {
 // ------------------------------------------------------------------ init
 
 bool EditorApp::initWindow(std::string& error) {
-  if (!glfwInit()) {
-    error = "não consegui iniciar o GLFW";
-    return false;
-  }
-  glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 3);
-  glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 3);
-  glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
-  glfwWindowHint(GLFW_OPENGL_FORWARD_COMPAT, GLFW_TRUE);
+  // OpenGL 3.3 core via SFML::Window (sem GLFW).
+  sf::ContextSettings settings;
+  settings.majorVersion = 3;
+  settings.minorVersion = 3;
+  settings.attributeFlags = sf::ContextSettings::Core;
 
-  window_ = glfwCreateWindow(WINDOW_W, WINDOW_H, "Loomia Studio", nullptr, nullptr);
-  glfwSetWindowSizeLimits(window_, MIN_WINDOW_W, MIN_WINDOW_H, GLFW_DONT_CARE, GLFW_DONT_CARE);
+  window_ = new sf::RenderWindow(sf::VideoMode(WINDOW_W, WINDOW_H), "Loomia Studio",
+                                 sf::Style::Titlebar | sf::Style::Close, settings);
   if (!window_) {
     error = "não consegui criar a janela OpenGL 3.3 (a GPU suporta?)";
-    glfwTerminate();
     return false;
   }
-  glfwMakeContextCurrent(window_);
-  glfwSwapInterval(1);
-  glfwSetWindowUserPointer(window_, this);
+  window_->setActive(true);
+  window_->setVerticalSyncEnabled(true);
+  window_->setFramerateLimit(0);  // o loop controla o ritmo
 
-  glfwSetKeyCallback(window_, [](GLFWwindow* w, int key, int, int action, int) {
-    if (auto* self = static_cast<EditorApp*>(glfwGetWindowUserPointer(w)); self && key >= 0 && key < 512) {
-      self->keys_[key] = action != GLFW_RELEASE;
-    }
-  });
-  glfwSetScrollCallback(window_, [](GLFWwindow* w, double, double yoff) {
-    if (auto* self = static_cast<EditorApp*>(glfwGetWindowUserPointer(w))) {
-      const LayoutRects lay = self->layout();
-      double cx = 0, cy = 0;
-      glfwGetCursorPos(w, &cx, &cy);
-      const bool inside = cx >= lay.viewportX() && cx <= lay.viewportX() + lay.viewportW() &&
-                          cy >= lay.viewportY() && cy <= lay.viewportY() + lay.viewportH();
-      if (inside) self->camDist_ = std::clamp(self->camDist_ - static_cast<float>(yoff) * 2.5f, 4.f, 220.f);
-    }
-  });
-  glfwSetFramebufferSizeCallback(window_, [](GLFWwindow* w, int width, int height) {
-    if (auto* self = static_cast<EditorApp*>(glfwGetWindowUserPointer(w))) {
-      self->fbw_ = width > 0 ? width : 1;
-      self->fbh_ = height > 0 ? height : 1;
-    }
-  });
+  // Carrega ponteiros de funções OpenGL via GLAD, usando o loader do SFML.
+  if (!gladLoadGLLoader((GLADloadproc)sf::Context::getFunction)) {
+    error = "não consegui carregar funções OpenGL (GLAD)";
+    delete window_;
+    window_ = nullptr;
+    return false;
+  }
 
-  if (!renderer_.init(error)) return false;
-  if (!ui_.init(error)) return false;
+  if (!renderer_.init(error)) {
+    delete window_;
+    window_ = nullptr;
+    return false;
+  }
+  if (!ui_.init(error)) {
+    delete window_;
+    window_ = nullptr;
+    return false;
+  }
   // Fonte da UI: Comic Neue de misc/fonts. Os caminhos são resolvidos a
   // partir do executável (/proc/self/exe) e da env LOOMIA_STUDIO_ROOT, então
   // funciona no build/, no AppImage e em qualquer cwd.
@@ -393,19 +383,12 @@ bool EditorApp::initWindow(std::string& error) {
 }
 
 void EditorApp::shutdown() {
-  // Callbacks primeiro: nunca podem disparar com o objeto já destruído
-  // (era a causa do segfault ao fechar a janela).
+  // Callbacks primeiro: nunca podem disparar com o objeto já destruído.
   if (window_) {
-    glfwSetWindowUserPointer(window_, nullptr);
-    glfwSetKeyCallback(window_, nullptr);
-    glfwSetScrollCallback(window_, nullptr);
-    glfwSetFramebufferSizeCallback(window_, nullptr);
-  }
-  if (window_) {
-    glfwDestroyWindow(window_);
+    window_->setActive(false);
+    delete window_;
     window_ = nullptr;
   }
-  glfwTerminate();
 }
 
 void EditorApp::setStatus(const std::string& message) { status_ = message; }
@@ -532,11 +515,13 @@ EditorResult EditorApp::run() {
     return EditorResult::Quit;
   }
 
-  glfwGetFramebufferSize(window_, &fbw_, &fbh_);
+  sf::Vector2u size = window_->getSize();
+  fbw_ = static_cast<int>(size.x);
+  fbh_ = static_cast<int>(size.y);
   ui_.width = fbw_;
   ui_.height = fbh_;
 
-  double lastTime = glfwGetTime();
+  double lastTime = nowSeconds();
   bool running = true;
 
   // Abrir por linha de comando: LOOMIA_STUDIO_OPEN=arquivo.loom
@@ -548,12 +533,11 @@ EditorResult EditorApp::run() {
 
   while (running) {
     if (exitRequested_) break;
-    if (glfwWindowShouldClose(window_)) {
+    if (!window_->isOpen()) {
       if (inEditor_ && dirty_) {
         if (!confirmExit_) {
           // Alterações não salvas: pergunta antes de sair.
           confirmExit_ = true;
-          glfwSetWindowShouldClose(window_, GLFW_FALSE);
         }
         // Modal aberto: continua o loop até o usuário responder;
         // o modal seta exitRequested_ (fechar) ou limpa dirty_ (continuar).
@@ -561,19 +545,31 @@ EditorResult EditorApp::run() {
         break;  // sem alterações: sai direto
       }
     }
-    const double now = glfwGetTime();
+    // Eventos SFML (fecha, resize, foco).
+    sf::Event event;
+    while (window_->pollEvent(event)) {
+      if (event.type == sf::Event::Closed) {
+        if (inEditor_ && dirty_) {
+          confirmExit_ = true;
+        } else {
+          window_->close();
+        }
+      }
+    }
+    if (!window_->isOpen() && !confirmExit_) break;
+    const double now = nowSeconds();
     const float dt = static_cast<float>(now - lastTime);
     lastTime = now;
 
-    glfwPollEvents();
     clickConsumed_ = false;
     if (uiCooldown_ > 0) --uiCooldown_;
     tickAutosave(dt);
 
     // ---------- câmera: botão direito orbita, roda dá zoom, WASD move o alvo
     // (SÓ dentro do viewport central; com modal aberto nenhuma câmera mexe)
-    double probeX = 0, probeY = 0;
-    glfwGetCursorPos(window_, &probeX, &probeY);
+    sf::Vector2i mousePos = sf::Mouse::getPosition(*window_);
+    double probeX = static_cast<double>(mousePos.x);
+    double probeY = static_cast<double>(mousePos.y);
     const bool cursorInViewport = [this](double x, double y) {
       const LayoutRects lay = layout();
       return x >= lay.viewportX() && x <= lay.viewportX() + lay.viewportW() &&
@@ -581,9 +577,8 @@ EditorResult EditorApp::run() {
     }(probeX, probeY);
     const bool cameraAllowed = inEditor_ && !confirmExit_ && cursorInViewport && uiCooldown_ == 0;
 
-    if (cameraAllowed && glfwGetMouseButton(window_, GLFW_MOUSE_BUTTON_RIGHT) == GLFW_PRESS) {
-      double x, y;
-      glfwGetCursorPos(window_, &x, &y);
+    if (cameraAllowed && sf::Mouse::isButtonPressed(sf::Mouse::Button::Right)) {
+      double x = probeX, y = probeY;
       if (!orbiting_) { orbiting_ = true; lastX_ = x; lastY_ = y; }
       const float invert = prefsInvertOrbit_ ? -1.f : 1.f;
       camYaw_ -= static_cast<float>(x - lastX_) * 0.008f * prefsOrbitSpeed_ * invert;
@@ -595,9 +590,8 @@ EditorResult EditorApp::run() {
     }
 
     // Botão do meio: pan do mapa (só dentro do viewport e sem modal).
-    if (cameraAllowed && glfwGetMouseButton(window_, GLFW_MOUSE_BUTTON_MIDDLE) == GLFW_PRESS) {
-      double x, y;
-      glfwGetCursorPos(window_, &x, &y);
+    if (cameraAllowed && sf::Mouse::isButtonPressed(sf::Mouse::Button::Middle)) {
+      double x = probeX, y = probeY;
       if (!panning_) { panning_ = true; lastX_ = x; lastY_ = y; }
       const float scale = camDist_ * 0.0016f;
       // Pan no plano do chão (X/Z): mouse puxa o mundo na direção da tela.
@@ -629,12 +623,13 @@ EditorResult EditorApp::run() {
     }
 
     if (inEditor_ && !confirmExit_ && !playTestOpen_ && !prefsOpen_) {
-      double mx, my;
-      glfwGetCursorPos(window_, &mx, &my);
+      sf::Vector2i mousePos = sf::Mouse::getPosition(*window_);
+      double mx = static_cast<double>(mousePos.x);
+      double my = static_cast<double>(mousePos.y);
       const LayoutRects layNow = layout();
       const bool inViewport = my > layNow.viewportY() && my < layNow.viewportY() + layNow.viewportH() &&
                               mx > layNow.viewportX() && mx < layNow.viewportX() + layNow.viewportW();
-      const bool leftDown = glfwGetMouseButton(window_, GLFW_MOUSE_BUTTON_LEFT) == GLFW_PRESS;
+      const bool leftDown = sf::Mouse::isButtonPressed(sf::Mouse::Button::Left);
       if (inViewport && leftDown && !dragging_ && !mouseWasDown_ && !clickConsumed_) {
         clickConsumed_ = true;
         dragging_ = true;
@@ -768,7 +763,7 @@ EditorResult EditorApp::run() {
     }
 
     // ---------- render 3D
-    glfwMakeContextCurrent(window_);
+    window_->setActive(true);
     glViewport(0, 0, fbw_, fbh_);
     glClearColor(world_.sky.rf(), world_.sky.gf(), world_.sky.bf(), 1.f);
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
@@ -933,8 +928,8 @@ EditorResult EditorApp::run() {
     glEnable(GL_DEPTH_TEST);
     glDisable(GL_BLEND);
 
-    mouseWasDown_ = glfwGetMouseButton(window_, GLFW_MOUSE_BUTTON_LEFT) == GLFW_PRESS;
-    glfwSwapBuffers(window_);
+    mouseWasDown_ = sf::Mouse::isButtonPressed(sf::Mouse::Button::Left);
+    window_->display();
   }
 
   ui_.destroy();

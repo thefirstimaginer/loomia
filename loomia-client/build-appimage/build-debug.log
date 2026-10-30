@@ -1,8 +1,0 @@
-[ 45%] Built target loomia-engine
-[ 63%] Built target loomia-tests-udp
-[ 63%] Built target loomia-tests
-[ 72%] Built target loomia-tests-sfml-net
-[ 81%] Building CXX object CMakeFiles/loomia-client.dir/src/main.cpp.o
-[ 81%] Building CXX object CMakeFiles/loomia-client.dir/src/launcher.cpp.o
-[ 86%] Linking CXX executable loomia-client-debug
-[100%] Built target loomia-client

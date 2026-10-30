@@ -7,8 +7,6 @@
 // Assets: pastas do projeto (modelos/materiais/sons) + exemplos incluídos.
 #include "editor.h"
 
-#include <GLFW/glfw3.h>
-
 #include <chrono>
 #include <cstdio>
 #include <cstring>
@@ -73,8 +71,9 @@ void EditorApp::drawAssetBrowser(int fbw, int fbh, const Theme& th) {
   uiText("projeto + exemplos", x + 62, y + 5, 9, th.inkSoftR, th.inkSoftG, th.inkSoftB);
 
   double mx, my;
-  glfwGetCursorPos(window_, &mx, &my);
-  const bool down = glfwGetMouseButton(window_, GLFW_MOUSE_BUTTON_LEFT) == GLFW_PRESS;
+  mx = static_cast<double>(sf::Mouse::getPosition(*window_).x);
+my = static_cast<double>(sf::Mouse::getPosition(*window_).y);
+  const bool down = sf::Mouse::isButtonPressed(sf::Mouse::Button::Left);
 
   // Categorias: primitivas (projeto) e exemplos incluídos.
   struct Asset {

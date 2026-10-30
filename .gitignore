@@ -15,6 +15,14 @@ Ruzit
 /build
 /loomia-frontend/node_modules
 
+# Builds do client e studio (CMake)
+/loomia-client/build/
+/loomia-client/build-appimage/
+/loomia-client/build-appimage-debug/
+/loomia-studio/build/
+/loomia-studio/build-appimage/
+/loomia-studio/build-appimage-debug/
+
 # Master server: banco/dados locais e handler gerado
 /loomia-masterserver/node_modules
 /loomia-masterserver/data/
@@ -31,3 +39,4 @@ __pycache__/
 /new-engine-src
 /misc
 /misc
+/deps

@@ -7,7 +7,7 @@
 #endif
 
 #include <glad/glad.h>
-#include <GLFW/glfw3.h>
+#include <SFML/Window.hpp>
 
 #include <algorithm>
 #include <chrono>
@@ -39,31 +39,30 @@ GameScene::GameScene(Profile& profile) : profile_(profile) {}
 GameScene::~GameScene() { shutdown(); }
 
 bool GameScene::initWindow(std::string& error) {
-  if (!glfwInit()) {
-    error = "não consegui iniciar o GLFW";
-    return false;
-  }
   // OpenGL 3.3 core: roda em GPUs de 2012+ (inclusive Intel HD integrada).
-  glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 3);
-  glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 3);
-  glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
-  glfwWindowHint(GLFW_OPENGL_FORWARD_COMPAT, GLFW_TRUE);  // macOS
-  glfwWindowHint(GLFW_SAMPLES, 0);
-  glfwWindowHint(GLFW_VISIBLE, GLFW_TRUE);
+  sf::ContextSettings settings;
+  settings.majorVersion = 3;
+  settings.minorVersion = 3;
+  settings.attributeFlags = sf::ContextSettings::Core;
 
-  window_ = glfwCreateWindow(1280, 720, "Loomia", nullptr, nullptr);
+  window_ = new sf::RenderWindow(sf::VideoMode(1280, 720), "Loomia",
+                                 sf::Style::Titlebar | sf::Style::Close, settings);
   if (!window_) {
     error = "não consegui criar a janela OpenGL 3.3 (a GPU suporta?)";
-    glfwTerminate();
     return false;
   }
-  glfwMakeContextCurrent(window_);
-  glfwSwapInterval(1);
+  window_->setActive(true);
+  window_->setVerticalSyncEnabled(true);
+
+  // Carrega ponteiros de funções OpenGL via GLAD, usando o loader do SFML.
+  if (!gladLoadGLLoader((GLADloadproc)sf::Context::getFunction)) {
+    error = "não consegui carregar funções OpenGL (GLAD)";
+    return false;
+  }
 
   if (!renderer_.init(error)) {
-    glfwDestroyWindow(window_);
+    delete window_;
     window_ = nullptr;
-    glfwTerminate();
     return false;
   }
   return true;
@@ -73,10 +72,10 @@ void GameScene::shutdown() {
   channel_.close();
   renderer_.destroy();
   if (window_) {
-    glfwDestroyWindow(window_);
+    window_->setActive(false);
+    delete window_;
     window_ = nullptr;
   }
-  glfwTerminate();
 }
 
 GameResult GameScene::run(const PlaySession& session) {
@@ -105,7 +104,7 @@ GameResult GameScene::run(const PlaySession& session) {
     std::snprintf(title, sizeof(title), "Loomia - %s - Blocos: %zu - Vertices: %zu - Ping: %s",
                   session.mapName.c_str(), session.world.blocks.size(), renderer_.vertexCount(),
                   ping >= 0 ? std::to_string(static_cast<int>(ping)).c_str() : "--");
-    glfwSetWindowTitle(window_, title);
+    window_->setTitle(title);
   };
   updateTitle(-1);
 
@@ -120,8 +119,11 @@ GameResult GameScene::run(const PlaySession& session) {
   const double connectedAt = nowSeconds();
   while (!channel_.hasWelcome() && nowSeconds() - connectedAt < 6.0) {
     channel_.poll();
-    glfwPollEvents();
-    if (glfwWindowShouldClose(window_)) return GameResult::BackToLauncher;
+    sf::Event event;
+    while (window_->pollEvent(event)) {
+      if (event.type == sf::Event::Closed) return GameResult::BackToLauncher;
+    }
+    if (!window_->isOpen()) return GameResult::BackToLauncher;
     std::this_thread::sleep_for(std::chrono::milliseconds(5));
   }
   if (!channel_.hasWelcome()) {
@@ -167,16 +169,26 @@ GameResult GameScene::run(const PlaySession& session) {
   std::printf("[loomia] no mundo \"%s\" (sala %s)\n", session.mapName.c_str(), session.server.c_str());
 
   // ---- loop ------------------------------------------------------------
-  while (!glfwWindowShouldClose(window_)) {
+  while (window_->isOpen()) {
     const double now = nowSeconds();
     float dt = static_cast<float>(now - lastTime);
     lastTime = now;
     dt = std::min(dt, 0.1f);
 
+    // Processa eventos da janela (fecha, resize etc.).
+    sf::Event event;
+    while (window_->pollEvent(event)) {
+      if (event.type == sf::Event::Closed) {
+        window_->close();
+        break;
+      }
+    }
+    if (!window_->isOpen()) break;
+
     // Inputs.
-    if (glfwGetKey(window_, GLFW_KEY_ESCAPE) == GLFW_PRESS) break;
+    if (sf::Keyboard::isKeyPressed(sf::Keyboard::Key::Escape)) break;
     static bool vHeld = false;
-    if (glfwGetKey(window_, GLFW_KEY_V) == GLFW_PRESS) {
+    if (sf::Keyboard::isKeyPressed(sf::Keyboard::Key::V)) {
       if (!vHeld) firstPerson = !firstPerson;
       vHeld = true;
     } else {
@@ -184,28 +196,29 @@ GameResult GameScene::run(const PlaySession& session) {
     }
     // F3 liga/desliga o HUD de debug (sempre disponível na build debug).
     static bool f3Held = false;
-    if (glfwGetKey(window_, GLFW_KEY_F3) == GLFW_PRESS) {
+    if (sf::Keyboard::isKeyPressed(sf::Keyboard::Key::F3)) {
       if (!f3Held) debugHud = !debugHud;
       f3Held = true;
     } else {
       f3Held = false;
     }
 
-    const bool forward = glfwGetKey(window_, GLFW_KEY_W) == GLFW_PRESS ||
-                         glfwGetKey(window_, GLFW_KEY_UP) == GLFW_PRESS;
-    const bool back = glfwGetKey(window_, GLFW_KEY_S) == GLFW_PRESS ||
-                      glfwGetKey(window_, GLFW_KEY_DOWN) == GLFW_PRESS;
-    const bool left = glfwGetKey(window_, GLFW_KEY_A) == GLFW_PRESS ||
-                      glfwGetKey(window_, GLFW_KEY_LEFT) == GLFW_PRESS;
-    const bool right = glfwGetKey(window_, GLFW_KEY_D) == GLFW_PRESS ||
-                       glfwGetKey(window_, GLFW_KEY_RIGHT) == GLFW_PRESS;
-    const bool jump = glfwGetKey(window_, GLFW_KEY_SPACE) == GLFW_PRESS;
+    const bool forward = sf::Keyboard::isKeyPressed(sf::Keyboard::Key::W) ||
+                         sf::Keyboard::isKeyPressed(sf::Keyboard::Key::Up);
+    const bool back = sf::Keyboard::isKeyPressed(sf::Keyboard::Key::S) ||
+                      sf::Keyboard::isKeyPressed(sf::Keyboard::Key::Down);
+    const bool left = sf::Keyboard::isKeyPressed(sf::Keyboard::Key::A) ||
+                      sf::Keyboard::isKeyPressed(sf::Keyboard::Key::Left);
+    const bool right = sf::Keyboard::isKeyPressed(sf::Keyboard::Key::D) ||
+                       sf::Keyboard::isKeyPressed(sf::Keyboard::Key::Right);
+    const bool jump = sf::Keyboard::isKeyPressed(sf::Keyboard::Key::Space);
 
     // Gira a câmera com o botão direito (drag).
-    double mouseX = 0, mouseY = 0;
-    glfwGetCursorPos(window_, &mouseX, &mouseY);
+    sf::Vector2i mousePos = sf::Mouse::getPosition(*window_);
+    double mouseX = static_cast<double>(mousePos.x);
+    double mouseY = static_cast<double>(mousePos.y);
     static double lastMouseX = mouseX, lastMouseY = mouseY;
-    if (glfwGetMouseButton(window_, GLFW_MOUSE_BUTTON_RIGHT) == GLFW_PRESS || firstPerson) {
+    if (sf::Mouse::isButtonPressed(sf::Mouse::Button::Right) || firstPerson) {
       cameraYaw -= static_cast<float>(mouseX - lastMouseX) * 0.004f;
       cameraPitch -= static_cast<float>(mouseY - lastMouseY) * 0.003f;
       cameraPitch = clampf(cameraPitch, -1.2f, 1.2f);
@@ -279,7 +292,7 @@ GameResult GameScene::run(const PlaySession& session) {
     }
 
     me.update(state.position, state.yaw, std::sqrt(state.velocity.x * state.velocity.x +
-                                                    state.velocity.z * state.velocity.z),
+                                                   state.velocity.z * state.velocity.z),
               dt);
 
     // Câmera orbital (ou primeira pessoa).
@@ -300,8 +313,9 @@ GameResult GameScene::run(const PlaySession& session) {
     }
 
     // ---- render --------------------------------------------------------
-    int width = 0, height = 0;
-    glfwGetFramebufferSize(window_, &width, &height);
+    sf::Vector2u size = window_->getSize();
+    int width = static_cast<int>(size.x);
+    int height = static_cast<int>(size.y);
     if (width > 0 && height > 0) {
       glViewport(0, 0, width, height);
       const World& world = session.world;
@@ -363,8 +377,7 @@ GameResult GameScene::run(const PlaySession& session) {
       }
     }
 
-    glfwSwapBuffers(window_);
-    glfwPollEvents();
+    window_->display();
   }
 
   channel_.close();

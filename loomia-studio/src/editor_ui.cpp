@@ -10,7 +10,6 @@
 #include <cmath>
 
 #include <glad/glad.h>
-#include <GLFW/glfw3.h>
 
 namespace loomia {
 void EditorApp::uiText(const std::string& str, float x, float y, float px, float r, float g, float b, float a) {
@@ -58,9 +57,10 @@ void EditorApp::drawWelcome(int fbw, int fbh) {
     ui_.rect(x + 16, y + 16, cardW - 32, 66, 0.88f, 0.9f, 0.93f);
     // clique (com consumo — um widget por frame)
     double mx, my;
-    glfwGetCursorPos(window_, &mx, &my);
+    mx = static_cast<double>(sf::Mouse::getPosition(*window_).x);
+my = static_cast<double>(sf::Mouse::getPosition(*window_).y);
     if (!clickConsumed_ && uiCooldown_ == 0 && buttonHit(mx, my, x, y, cardW, cardH) &&
-        glfwGetMouseButton(window_, GLFW_MOUSE_BUTTON_LEFT) == GLFW_PRESS) {
+        sf::Mouse::isButtonPressed(sf::Mouse::Button::Left)) {
       clickConsumed_ = true;
       newFromTemplate(index);
       return;
@@ -97,8 +97,9 @@ void EditorApp::drawWelcomeText(int fbw, int fbh) {
   ui_.frame(bx, by, bw, bh, 3, 0.08f, 0.12f, 0.17f);
   uiText("ABRIR .LOOM", bx + (bw - font_.textWidth("ABRIR .LOOM", 16)) / 2, by + 14, 16, 0.15f, 0.12f, 0.0f);
   double mx, my;
-  glfwGetCursorPos(window_, &mx, &my);
-  const bool down = glfwGetMouseButton(window_, GLFW_MOUSE_BUTTON_LEFT) == GLFW_PRESS;
+  mx = static_cast<double>(sf::Mouse::getPosition(*window_).x);
+my = static_cast<double>(sf::Mouse::getPosition(*window_).y);
+  const bool down = sf::Mouse::isButtonPressed(sf::Mouse::Button::Left);
   if (down && !mouseWasDown_ && !clickConsumed_ && buttonHit(mx, my, bx, by, bw, bh)) {
     clickConsumed_ = true;
     // File dialog nativo via zenity/kdialog (padrão em distros Linux)
@@ -141,8 +142,9 @@ void EditorApp::drawSceneMenu(float fbw, float fbh) {
   ui_.rect(handleX, sy - 3, 8, 16, 0.1f, 0.15f, 0.2f);
 
   double mx, my;
-  glfwGetCursorPos(window_, &mx, &my);
-  if (glfwGetMouseButton(window_, GLFW_MOUSE_BUTTON_LEFT) == GLFW_PRESS &&
+  mx = static_cast<double>(sf::Mouse::getPosition(*window_).x);
+my = static_cast<double>(sf::Mouse::getPosition(*window_).y);
+  if (sf::Mouse::isButtonPressed(sf::Mouse::Button::Left) &&
       mx > sx && mx < sx + sw && my > sy - 6 && my < sy + 16) {
     const float newHue = std::clamp(static_cast<float>((mx - sx) / sw), 0.f, 0.999f);
     if (std::abs(newHue - skyHue_) > 0.002f) {
@@ -156,7 +158,7 @@ void EditorApp::drawSceneMenu(float fbw, float fbh) {
 
   uiText("Clique fora para fechar", x + 14, y + 92, 11, 0.5f, 0.55f, 0.6f);
   // Fecha ao clicar fora do menu.
-  if (glfwGetMouseButton(window_, GLFW_MOUSE_BUTTON_LEFT) == GLFW_PRESS &&
+  if (sf::Mouse::isButtonPressed(sf::Mouse::Button::Left) &&
       !(mx > x && mx < x + W && my > y && my < y + H)) {
     sceneMenu_ = false;
   }
@@ -182,8 +184,9 @@ void EditorApp::drawConfirmExit(int fbw, int fbh) {
   uiText("O mapa tem alterações que ainda não foram salvas.", x + 24, y + 56, 14, 0.3f, 0.35f, 0.42f);
 
   double mx, my;
-  glfwGetCursorPos(window_, &mx, &my);
-  const bool down = glfwGetMouseButton(window_, GLFW_MOUSE_BUTTON_LEFT) == GLFW_PRESS;
+  mx = static_cast<double>(sf::Mouse::getPosition(*window_).x);
+my = static_cast<double>(sf::Mouse::getPosition(*window_).y);
+  const bool down = sf::Mouse::isButtonPressed(sf::Mouse::Button::Left);
   const bool clicked = down && !mouseWasDown_;
 
   struct Option { const char* label; float x; };
@@ -204,16 +207,16 @@ void EditorApp::drawConfirmExit(int fbw, int fbh) {
       if (std::strcmp(option.label, "Salvar") == 0) {
         if (!filePath_.empty()) {
           std::string err;
-          if (saveLoom(filePath_, err)) { addRecent(filePath_); inEditor_ = false; if (glfwWindowShouldClose(window_)) exitRequested_ = true; }
+          if (saveLoom(filePath_, err)) { addRecent(filePath_); inEditor_ = false; if (!window_->isOpen()) exitRequested_ = true; }
           else setStatus("Erro ao salvar: " + err);
         } else if (saveWithDialog()) {
           inEditor_ = false;
-          if (glfwWindowShouldClose(window_)) exitRequested_ = true;
+          if (!window_->isOpen()) exitRequested_ = true;
         }
       } else if (std::strcmp(option.label, "Não salvar") == 0) {
         dirty_ = false;
         // Se o pedido veio do X da janela, fecha de verdade.
-        if (glfwWindowShouldClose(window_)) exitRequested_ = true;
+        if (!window_->isOpen()) exitRequested_ = true;
         inEditor_ = false;
       }
       // "Cancelar" só fecha o modal.
@@ -296,8 +299,9 @@ void EditorApp::drawPrefs(int fbw, int fbh) {
   ui_.rect(x, y + 32, w, 1, th_.lineR, th_.lineG, th_.lineB);
 
   double mx, my;
-  glfwGetCursorPos(window_, &mx, &my);
-  const bool down = glfwGetMouseButton(window_, GLFW_MOUSE_BUTTON_LEFT) == GLFW_PRESS;
+  mx = static_cast<double>(sf::Mouse::getPosition(*window_).x);
+my = static_cast<double>(sf::Mouse::getPosition(*window_).y);
+  const bool down = sf::Mouse::isButtonPressed(sf::Mouse::Button::Left);
   const bool clicked = down && !mouseWasDown_;
 
   float ly = y + 44;

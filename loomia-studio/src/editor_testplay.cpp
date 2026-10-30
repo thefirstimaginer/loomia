@@ -7,7 +7,6 @@
 #include "editor.h"
 
 #include <glad/glad.h>
-#include <GLFW/glfw3.h>
 
 #include <cmath>
 #include <vector>

@@ -1,1 +1,0 @@
-/usr/bin/c++ -O3 -DNDEBUG "CMakeFiles/loomia-tests-udp.dir/tests/net_test.cpp.o" -o loomia-tests-udp  libloomia-engine.a /usr/lib/x86_64-linux-gnu/libGLX.so /usr/lib/x86_64-linux-gnu/libOpenGL.so /usr/lib/x86_64-linux-gnu/libglfw.so.3.3 

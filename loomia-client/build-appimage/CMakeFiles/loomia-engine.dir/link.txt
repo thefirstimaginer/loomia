@@ -1,2 +1,0 @@
-/usr/bin/ar qc libloomia-engine.a "CMakeFiles/loomia-engine.dir/engine/args_parse.cpp.o" "CMakeFiles/loomia-engine.dir/engine/avatar.cpp.o" "CMakeFiles/loomia-engine.dir/engine/json.cpp.o" "CMakeFiles/loomia-engine.dir/engine/labels.cpp.o" "CMakeFiles/loomia-engine.dir/engine/net.cpp.o" "CMakeFiles/loomia-engine.dir/engine/physics.cpp.o" "CMakeFiles/loomia-engine.dir/engine/renderer.cpp.o" "CMakeFiles/loomia-engine.dir/engine/world.cpp.o" "CMakeFiles/loomia-engine.dir/third_party/src/glad.c.o"
-/usr/bin/ranlib libloomia-engine.a

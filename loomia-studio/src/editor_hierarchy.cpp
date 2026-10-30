@@ -6,8 +6,6 @@
 // integrado; por ora são do editor).
 #include "editor.h"
 
-#include <GLFW/glfw3.h>
-
 #include <cstdio>
 #include <cmath>
 

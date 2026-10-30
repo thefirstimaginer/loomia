@@ -9,6 +9,16 @@ endif()
 
 # O studio reusa o engine do cliente (world.h/.cpp, math.h, renderer.h/.cpp).
 set(CLIENT_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/../loomia-client")
+set(LOOMIA_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/..")
+
+# SFML 3: o pacote de `new-engine-src/SFML` inclui .so e CMake config.
+set(LOOMIA_SFML_DIR "${LOOMIA_ROOT}/new-engine-src/SFML" CACHE PATH "Pacote SFML (include/lib)")
+if(EXISTS "${LOOMIA_SFML_DIR}/lib/cmake/SFML/SFMLConfig.cmake")
+  set(SFML_DIR "${LOOMIA_SFML_DIR}/lib/cmake/SFML")
+  find_package(SFML 3.0 COMPONENTS Window REQUIRED)
+else()
+  find_package(SFML 3.0 COMPONENTS Window REQUIRED)
+endif()
 
 add_executable(loomia-studio
   src/main.cpp
@@ -20,9 +30,6 @@ add_executable(loomia-studio
   src/editor_shell.cpp
   src/png_loader.cpp
   src/icon_atlas.cpp
-  src/editor_lua.cpp
-  src/editor_hierarchy.cpp
-  src/editor_assets.cpp
   src/editor_lua.cpp
   src/editor_hierarchy.cpp
   src/editor_assets.cpp
@@ -45,15 +52,8 @@ target_include_directories(loomia-studio PRIVATE
 
 find_package(OpenGL REQUIRED)
 find_package(Freetype REQUIRED)
-find_package(glfw3 3.3 QUIET)
-if(NOT glfw3_FOUND)
-  # Fallback: linka direto na lib do sistema.
-  set(GLFW_LIB glfw)
-else()
-  set(GLFW_LIB glfw)
-endif()
 
-target_link_libraries(loomia-studio PRIVATE OpenGL::GL Freetype::Freetype glfw dl z)
+target_link_libraries(loomia-studio PRIVATE OpenGL::GL Freetype::Freetype SFML::Window dl z)
 
 if(UNIX AND NOT APPLE)
   target_compile_options(loomia-studio PRIVATE -Wall -Wextra)

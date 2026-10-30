@@ -34,21 +34,8 @@ endif()
 find_package(OpenGL REQUIRED)
 find_package(Threads REQUIRED)
 
-# GLFW: prioridade para o vendored (versão conhecida, sem depender do sistema).
-set(LOOMIA_GLFW_DIR "${LOOMIA_ROOT}/loomia-engine/deps/glfw")
-if(EXISTS "${LOOMIA_GLFW_DIR}/CMakeLists.txt")
-  set(GLFW_BUILD_DOCS OFF CACHE BOOL "" FORCE)
-  set(GLFW_BUILD_TESTS OFF CACHE BOOL "" FORCE)
-  set(GLFW_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
-  set(GLFW_INSTALL OFF CACHE BOOL "" FORCE)
-  set(GLFW_BUILD_WAYLAND OFF CACHE BOOL "" FORCE)
-  set(GLFW_BUILD_X11 ON CACHE BOOL "" FORCE)
-  add_subdirectory("${LOOMIA_GLFW_DIR}" "${CMAKE_BINARY_DIR}/glfw" EXCLUDE_FROM_ALL)
-else()
-  find_package(glfw3 3.3 REQUIRED)
-endif()
-
-# SFML 3 usa ícone e imagem para a bandeja/janela; nada além do padrão.
+# O jogo agora usa SFML::Window para a janela OpenGL (sem GLFW).
+# GLAD carrega as funções OpenGL via loader do SFML.
 
 # ---------------------------------------------------------------------------
 # Núcleo do engine (compartilhado entre launcher e jogo)
@@ -73,7 +60,6 @@ target_include_directories(loomia-engine PUBLIC
 )
 target_link_libraries(loomia-engine PUBLIC
   OpenGL::GL
-  glfw
   Threads::Threads
 )
 
@@ -92,7 +78,6 @@ target_link_libraries(loomia-client PRIVATE
   SFML::Window
   SFML::System
   OpenGL::GL
-  glfw
   Threads::Threads
 )
 
@@ -127,4 +112,4 @@ if(UNIX AND NOT APPLE)
   # libcurl é usada via `popen("curl ...")`; nada para linkar.
 endif()
 
-message(STATUS "Loomia Client: OpenGL 3.3 · SFML 3 · GLFW")
+message(STATUS "Loomia Client: OpenGL 3.3 · SFML 3 · GLAD")

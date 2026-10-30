@@ -17,10 +17,10 @@
 #include "theme.h"
 #include "icon_atlas.h"
 
+#include <SFML/Window.hpp>
+
 #include <string>
 #include <vector>
-
-struct GLFWwindow;
 
 namespace loomia {
 
@@ -72,9 +72,8 @@ class EditorApp {
   ~EditorApp();
 
   // ---- estado compartilhado (módulos leem/escrevem) ----
-  GLFWwindow* window_ = nullptr;
+  sf::RenderWindow* window_ = nullptr;
   WorldRenderer renderer_;
-  UiOverlay ui_;
   UiFont font_;
   std::string fontError_;
 

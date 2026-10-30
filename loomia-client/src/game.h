@@ -1,4 +1,4 @@
-// Cena do jogo: janela GLFW + render OpenGL do mapa, física local e rede UDP.
+// Cena do jogo: janela SFML + render OpenGL do mapa, física local e rede UDP.
 //
 // O mapa é baixado SÓ para esta sessão (memória): ao sair, nada fica em disco.
 #pragma once
@@ -11,8 +11,6 @@
 #include "profile.h"
 #include "renderer.h"
 #include "world.h"
-
-struct GLFWwindow;
 
 namespace loomia {
 
@@ -40,7 +38,7 @@ class GameScene {
   void shutdown();
 
   Profile& profile_;
-  GLFWwindow* window_ = nullptr;
+  sf::RenderWindow* window_ = nullptr;
   WorldRenderer renderer_;
   GameChannel channel_;
   std::string error_;

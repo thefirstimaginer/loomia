@@ -5,7 +5,6 @@
 #include "editor.h"
 
 #include <glad/glad.h>
-#include <GLFW/glfw3.h>
 
 #include <cstdio>
 #include <cmath>
@@ -83,8 +82,9 @@ void EditorApp::drawTopbar(int fbw, int fbh, const Theme& th) {
   ui_.rect(0, H - 1, W, 1, th.lineR, th.lineG, th.lineB);
 
   double mx, my;
-  glfwGetCursorPos(window_, &mx, &my);
-  const bool down = glfwGetMouseButton(window_, GLFW_MOUSE_BUTTON_LEFT) == GLFW_PRESS;
+  mx = static_cast<double>(sf::Mouse::getPosition(*window_).x);
+my = static_cast<double>(sf::Mouse::getPosition(*window_).y);
+  const bool down = sf::Mouse::isButtonPressed(sf::Mouse::Button::Left);
   const bool clicked = down && !mouseWasDown_;
   if (confirmExit_) return;  // modal é desenhado no loop
 
@@ -240,8 +240,9 @@ void EditorApp::drawTabs(int fbw, int fbh, const Theme& th) {
   const float tabW = 84, tabH = 24;
 
   double mx, my;
-  glfwGetCursorPos(window_, &mx, &my);
-  const bool down = glfwGetMouseButton(window_, GLFW_MOUSE_BUTTON_LEFT) == GLFW_PRESS;
+  mx = static_cast<double>(sf::Mouse::getPosition(*window_).x);
+my = static_cast<double>(sf::Mouse::getPosition(*window_).y);
+  const bool down = sf::Mouse::isButtonPressed(sf::Mouse::Button::Left);
   const bool clicked = down && !mouseWasDown_;
 
   const char* names[] = {"Cena", "Scripts"};
@@ -298,8 +299,9 @@ void EditorApp::drawToolRail(int fbw, int fbh, const Theme& th) {
   const float panelH = 6 * s + 5 * gap + 8;
 
   double mx, my;
-  glfwGetCursorPos(window_, &mx, &my);
-  const bool down = glfwGetMouseButton(window_, GLFW_MOUSE_BUTTON_LEFT) == GLFW_PRESS;
+  mx = static_cast<double>(sf::Mouse::getPosition(*window_).x);
+my = static_cast<double>(sf::Mouse::getPosition(*window_).y);
+  const bool down = sf::Mouse::isButtonPressed(sf::Mouse::Button::Left);
   const bool clicked = down && !mouseWasDown_;
 
   const char* names[] = {"Add", "Select", "Move", "Scale", "Paint", "Erase"};
@@ -387,8 +389,9 @@ void EditorApp::drawHierarchy(int fbw, int fbh, const Theme& th) {
   uiText("Hierarquia", x + 10, y + 8, 13, th.inkR, th.inkG, th.inkB);
 
   double mx, my;
-  glfwGetCursorPos(window_, &mx, &my);
-  const bool down = glfwGetMouseButton(window_, GLFW_MOUSE_BUTTON_LEFT) == GLFW_PRESS;
+  mx = static_cast<double>(sf::Mouse::getPosition(*window_).x);
+my = static_cast<double>(sf::Mouse::getPosition(*window_).y);
+  const bool down = sf::Mouse::isButtonPressed(sf::Mouse::Button::Left);
   const bool clicked = down && !mouseWasDown_;
 
   // ===== inserção de primitivas (linha de botões) =====
@@ -518,8 +521,9 @@ void EditorApp::drawProperties(int fbw, int fbh, const Theme& th) {
   Block& block = world_.blocks[static_cast<size_t>(selected_)];
 
   double mx, my;
-  glfwGetCursorPos(window_, &mx, &my);
-  const bool down = glfwGetMouseButton(window_, GLFW_MOUSE_BUTTON_LEFT) == GLFW_PRESS;
+  mx = static_cast<double>(sf::Mouse::getPosition(*window_).x);
+my = static_cast<double>(sf::Mouse::getPosition(*window_).y);
+  const bool down = sf::Mouse::isButtonPressed(sf::Mouse::Button::Left);
 
   char line[128];
   float ly = y + 34;
@@ -602,8 +606,9 @@ void EditorApp::drawResourceStrip(int fbw, int fbh, const Theme& th) {
   uiText("Recursos", x + 8, y + 6, 11, th.inkSoftR, th.inkSoftG, th.inkSoftB);
 
   double mx, my;
-  glfwGetCursorPos(window_, &mx, &my);
-  const bool down = glfwGetMouseButton(window_, GLFW_MOUSE_BUTTON_LEFT) == GLFW_PRESS;
+  mx = static_cast<double>(sf::Mouse::getPosition(*window_).x);
+my = static_cast<double>(sf::Mouse::getPosition(*window_).y);
+  const bool down = sf::Mouse::isButtonPressed(sf::Mouse::Button::Left);
 
   // Miniaturas: 6 materiais + cores rápidas
   const char* materials[] = {"plastic", "grass", "wood", "brick", "stone", "neon"};
