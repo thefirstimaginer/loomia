@@ -349,7 +349,6 @@ bool EditorApp::initWindow(std::string& error) {
       }
     }
   }
-  fontCandidates.push_back("/media/adryan/imaginedevel/Projetos/loomia/misc/fonts/Comic_Neue/ComicNeue-Bold.ttf");
   for (const std::string& candidate : fontCandidates) {
     std::string fontError;
     if (font_.init(candidate, fontError)) break;
