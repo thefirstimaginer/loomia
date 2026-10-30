@@ -5,6 +5,7 @@
 
 import type { RequestContext, Router } from './http.js'
 import { HttpError, sendJson } from './http.js'
+import { parseEnum } from './validate.js'
 import { config } from './config.js'
 import { requireAdmin, ONLINE_WINDOW_MINUTES } from './auth/session.js'
 import {
@@ -24,13 +25,43 @@ import {
 import { query } from './db/index.js'
 import { findUserByLogin, createUser, toPublicUser } from './db/repo.js'
 import { hashPassword } from './auth/password.js'
-import { parseRegister } from './validate.js'
+import { parseRegister, parseText, parseId } from './validate.js'
 import { recordEvent } from './db/moderation.js'
 import { RateLimiter } from './util.js'
 
 // Captchas pendentes: token -> resposta (expira em 10 minutos).
 const CAPTCHA_TTL_MS = 10 * 60_000
+/** Teto do store: acima disso o desafio mais antigo é descartado. */
+const CAPTCHA_MAX_ENTRIES = 1000
 const captchaStore = new Map<string, { answer: string; expiresAt: number }>()
+
+/** Remove desafios expirados (chamado a cada acesso ao store). */
+function purgeExpiredCaptchas(now = Date.now()): void {
+  for (const [key, entry] of captchaStore) if (entry.expiresAt <= now) captchaStore.delete(key)
+}
+
+/** Guarda um desafio novo, respeitando o TTL e o tamanho máximo do store. */
+function saveCaptcha(token: string, answer: string): void {
+  const now = Date.now()
+  purgeExpiredCaptchas(now)
+  while (captchaStore.size >= CAPTCHA_MAX_ENTRIES) {
+    // Map preserva a ordem de inserção: a primeira chave é a mais antiga.
+    const oldest = captchaStore.keys().next()
+    if (oldest.done) break
+    captchaStore.delete(oldest.value)
+  }
+  captchaStore.set(token, { answer, expiresAt: now + CAPTCHA_TTL_MS })
+}
+
+/** Consome um desafio (uso único) e devolve a resposta esperada, se válida. */
+function takeCaptcha(token: unknown): string | null {
+  const key = String(token ?? '')
+  purgeExpiredCaptchas()
+  const entry = captchaStore.get(key)
+  if (!entry) return null
+  captchaStore.delete(key)
+  return entry.answer
+}
 
 function captchaAlphabet(): string {
   // Sem I/L/O/0/1 para não confundir quem lê o código distorcido.
@@ -38,20 +69,14 @@ function captchaAlphabet(): string {
 }
 
 
-const ADMIN_ROLES: ReportStatus[] = ['open', 'reviewing', 'resolved', 'dismissed']
-const TICKET_ROLES: TicketStatus[] = ['open', 'reviewing', 'resolved', 'closed']
+const REPORT_STATUSES = ['open', 'reviewing', 'resolved', 'dismissed'] as const satisfies readonly ReportStatus[]
+const TICKET_STATUSES = ['open', 'reviewing', 'resolved', 'closed'] as const satisfies readonly TicketStatus[]
 
-function text(value: unknown, field: string, max: number): string {
-  const result = typeof value === 'string' ? value.trim() : ''
-  if (result.length > max) throw new HttpError(400, `${field} é longo demais`, 'invalid')
-  return result
-}
+/** Texto opcional do painel (sem tamanho mínimo). */
+const text = (value: unknown, field: string, max: number): string => parseText(value, field, 0, max)
 
-function playerId(value: string | undefined): string {
-  const id = Number(value)
-  if (!Number.isInteger(id) || id <= 0) throw new HttpError(400, 'id de jogador inválido', 'invalid')
-  return String(id)
-}
+/** Id do jogador vindo da URL. */
+const playerId = (value: string | undefined): string => parseId(value, 'id de jogador')
 
 function requireOrigin(ctx: RequestContext, allowed: string[]): void {
   const origin = ctx.req.headers.origin
@@ -84,8 +109,7 @@ export function createAdminApi(router: Router): void {
     requireOrigin(ctx, config.adminOrigins)
     const answer = Array.from({ length: 5 }, () => captchaAlphabet()[Math.floor(Math.random() * captchaAlphabet().length)]).join('')
     const token = `captcha-${Date.now()}-${Math.random().toString(36).slice(2)}`
-    captchaStore.set(token, { answer, expiresAt: Date.now() + CAPTCHA_TTL_MS })
-    for (const [key, entry] of captchaStore) if (entry.expiresAt < Date.now()) captchaStore.delete(key)
+    saveCaptcha(token, answer)
 
     const colors = ['#16202c', '#c8931a', '#2e8b57', '#0f78be']
     const glyphs = answer
@@ -125,24 +149,21 @@ export function createAdminApi(router: Router): void {
     if (wait > 0) throw new HttpError(429, `muitas tentativas, tente em ${wait}s`, 'rate_limited')
 
     const body = (await ctx.body()) as Record<string, unknown>
-    const challenge = captchaStore.get(String(body.captchaToken ?? ''))
+    const expected = takeCaptcha(body.captchaToken)
     const answer = String(body.captchaAnswer ?? '').trim().toUpperCase()
-    if (!challenge || challenge.expiresAt < Date.now() || challenge.answer !== answer) {
-      captchaStore.delete(String(body.captchaToken ?? ''))
+    if (expected === null || expected !== answer) {
       throw new HttpError(400, 'captcha inválido ou expirado', 'captcha_invalid')
     }
-    captchaStore.delete(String(body.captchaToken ?? ''))
 
     const input = parseRegister(body)
     if (await findUserByLogin(input.nickname)) {
       throw new HttpError(409, 'esse apelido já está em uso', 'nickname_taken')
     }
     const passwordHash = await hashPassword(input.password)
-    const created = await createUser({ ...input, passwordHash })
-    await query("UPDATE users SET role = 'admin' WHERE id = $1", [String(created.id)])
-    await recordEvent('registered', String(created.id))
-    sendJson(ctx.res, 201, { user: toPublicUser({ ...created, role: 'admin' }) })
-    void admin
+    // Um único INSERT já com o papel: nunca sobra conta meio-criada sem admin.
+    const created = await createUser({ ...input, passwordHash, role: 'admin' })
+    await recordEvent('registered', String(created.id), admin.id)
+    sendJson(ctx.res, 201, { user: toPublicUser(created) })
   })
 
   // ------------------------------------------------------------------ dashboard
@@ -229,9 +250,9 @@ export function createAdminApi(router: Router): void {
   router.put(/^\/api\/admin\/reports\/(\d+)$/, async (ctx) => {
     const admin = await guard(ctx)
     const body = (await ctx.body()) as Record<string, unknown>
-    const status = String(body.status ?? '') as ReportStatus
-    if (!ADMIN_ROLES.includes(status)) throw new HttpError(400, 'status inválido', 'invalid')
-    const report = await updateReport(String(Number(ctx.params[0])), status, text(body.resolution, 'resolução', 1000), admin.id)
+    const status = parseEnum(body.status, REPORT_STATUSES)
+    if (!status) throw new HttpError(400, 'status inválido', 'invalid')
+    const report = await updateReport(playerId(ctx.params[0]), status, text(body.resolution, 'resolução', 1000), admin.id)
     if (!report) throw new HttpError(404, 'report não encontrado', 'not_found')
     sendJson(ctx.res, 200, { report })
   })
@@ -248,9 +269,9 @@ export function createAdminApi(router: Router): void {
   router.put(/^\/api\/admin\/tickets\/(\d+)$/, async (ctx) => {
     const admin = await guard(ctx)
     const body = (await ctx.body()) as Record<string, unknown>
-    const status = String(body.status ?? '') as TicketStatus
-    if (!TICKET_ROLES.includes(status)) throw new HttpError(400, 'status inválido', 'invalid')
-    const ticket = await updateTicket(String(Number(ctx.params[0])), status, text(body.resolution, 'resolução', 1000), admin.id)
+    const status = parseEnum(body.status, TICKET_STATUSES)
+    if (!status) throw new HttpError(400, 'status inválido', 'invalid')
+    const ticket = await updateTicket(playerId(ctx.params[0]), status, text(body.resolution, 'resolução', 1000), admin.id)
     if (!ticket) throw new HttpError(404, 'ticket não encontrado', 'not_found')
     sendJson(ctx.res, 200, { ticket })
   })

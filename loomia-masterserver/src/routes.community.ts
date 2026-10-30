@@ -16,17 +16,16 @@ import {
   findBlogPost,
   listForumPosts,
   listForumRooms,
+  listNetworkPlayers,
   mapDetail,
   toggleStar,
 } from './db/community.js'
-import { listNetworkPlayers } from './db/community.js'
+import { parseText } from './validate.js'
 
-function text(value: unknown, field: string, min: number, max: number): string {
-  const result = typeof value === 'string' ? value.trim() : ''
-  if (result.length < min) throw new HttpError(400, `${field} é obrigatório`, 'invalid')
-  if (result.length > max) throw new HttpError(400, `${field} é longo demais`, 'invalid')
-  return result
-}
+const text = parseText
+
+/** Id de sala do fórum vindo da URL (o parse já foi feito pelo regex da rota). */
+const roomParam = (ctx: RequestContext): number => Number(ctx.params[0])
 
 export function createCommunityApi(router: Router, guard: (ctx: RequestContext) => Promise<SessionUser>): void {
   // ------------------------------------------------------------------ mundo
@@ -66,14 +65,15 @@ export function createCommunityApi(router: Router, guard: (ctx: RequestContext) 
 
   router.get(/^\/api\/forum\/rooms\/(\d+)\/posts$/, async (ctx) => {
     await guard(ctx)
-    const room = await findForumRoom(Number(ctx.params[0]))
+    const roomId = roomParam(ctx)
+    const room = await findForumRoom(roomId)
     if (!room) throw new HttpError(404, 'sala não encontrada', 'not_found')
-    sendJson(ctx.res, 200, { room, posts: await listForumPosts(Number(ctx.params[0])) })
+    sendJson(ctx.res, 200, { room, posts: await listForumPosts(roomId) })
   })
 
   router.post(/^\/api\/forum\/rooms\/(\d+)\/posts$/, async (ctx) => {
     const user = await guard(ctx)
-    const roomId = Number(ctx.params[0])
+    const roomId = roomParam(ctx)
     if (!(await findForumRoom(roomId))) throw new HttpError(404, 'sala não encontrada', 'not_found')
     const body = (await ctx.body()) as Record<string, unknown>
     const post = await createForumPost({

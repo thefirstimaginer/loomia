@@ -13,7 +13,23 @@ set(CLIENT_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/../loomia-client")
 add_executable(loomia-studio
   src/main.cpp
   src/editor.cpp
+  src/editor_ui.cpp
+  src/editor_actions.cpp
+  src/editor_gizmo.cpp
+  src/editor_scripts.cpp
+  src/editor_shell.cpp
+  src/png_loader.cpp
+  src/icon_atlas.cpp
+  src/editor_lua.cpp
+  src/editor_hierarchy.cpp
+  src/editor_assets.cpp
+  src/editor_lua.cpp
+  src/editor_hierarchy.cpp
+  src/editor_assets.cpp
+  src/editor_testplay.cpp
+  src/editor_play.cpp
   src/font.cpp
+  src/loom_format.cpp
   src/templates.cpp
   "${CLIENT_ROOT}/engine/world.cpp"
   "${CLIENT_ROOT}/engine/json.cpp"
@@ -37,7 +53,7 @@ else()
   set(GLFW_LIB glfw)
 endif()
 
-target_link_libraries(loomia-studio PRIVATE OpenGL::GL Freetype::Freetype glfw dl)
+target_link_libraries(loomia-studio PRIVATE OpenGL::GL Freetype::Freetype glfw dl z)
 
 if(UNIX AND NOT APPLE)
   target_compile_options(loomia-studio PRIVATE -Wall -Wextra)

@@ -4,7 +4,7 @@
 //   loomia-studio               abre a tela de boas-vindas
 //   loomia-studio mapa.loom     abre direto o mapa
 //   loomia-studio --export X    (futuro) exportação em lote
-#include "studio.h"
+#include "editor.h"
 
 #include <cstdio>
 #include <string>

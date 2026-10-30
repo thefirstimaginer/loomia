@@ -3,7 +3,7 @@
 // Reusa a engine do cliente: WorldRenderer (OpenGL 3.3), Vec3/Mat4 e o
 // formato .loom (world.h). A UI é desenhada com overlay 2D próprio — sem
 // toolkit externo, igual ao cliente.
-#include "studio.h"
+#include "editor.h"
 #include "templates.h"
 
 #include <glad/glad.h>
@@ -29,12 +29,6 @@
 namespace loomia {
 
 namespace {
-
-constexpr int WINDOW_W = 1440;
-constexpr int WINDOW_H = 860;
-constexpr int UI_BAR_H = 64;        // barra de ferramentas inferior
-constexpr int UI_STATUS_H = 26;     // linha de status
-constexpr float GRID_EXTENT = 60.f; // grade de referência
 
 // ---------------------------------------------------------------- overlays 2D
 
@@ -159,98 +153,7 @@ const Glyph5x7 kFont[96] = {
 };
 
 // Desenho de overlay: acumula triângulos em CPU e desenha com um VBO dinâmico.
-struct UiOverlay {
-  unsigned int vao = 0, vbo = 0;
-  ShaderProgram shader;
-  std::vector<float> verts;  // x,y,r,g,b,a (6 floats por vértice, 2 tri/vértice... na verdade triângulos)
-  int width = WINDOW_W, height = WINDOW_H;
-  bool ready = false;
-
-  bool init(std::string& error) {
-    if (!shader.compile(UI_VS, UI_FS, error)) return false;
-    glGenVertexArrays(1, &vao);
-    glGenBuffers(1, &vbo);
-    ready = true;
-    return true;
-  }
-
-  void destroy() {
-    if (vbo) glDeleteBuffers(1, &vbo);
-    if (vao) glDeleteVertexArrays(1, &vao);
-    shader.destroy();
-    ready = false;
-  }
-
-  void tri(float x0, float y0, float x1, float y1, float x2, float y2, float r, float g, float b, float a) {
-    verts.insert(verts.end(), {x0, y0, r, g, b, a, x1, y1, r, g, b, a, x2, y2, r, g, b, a});
-  }
-
-  void rect(float x, float y, float w, float h, float r, float g, float b, float a = 1.0f) {
-    tri(x, y, x + w, y, x + w, y + h, r, g, b, a);
-    tri(x, y, x + w, y + h, x, y + h, r, g, b, a);
-  }
-
-  void frame(float x, float y, float w, float h, float t, float r, float g, float b, float a = 1.0f) {
-    rect(x, y, w, t, r, g, b, a);
-    rect(x, y + h - t, w, t, r, g, b, a);
-    rect(x, y, t, h, r, g, b, a);
-    rect(x + w - t, y, t, h, r, g, b, a);
-  }
-
-  // Texto em escala inteira (cel_size px por célula do glifo 5x7).
-  void text(const std::string& str, float x, float y, float cell, float r, float g, float b, float a = 1.0f) {
-    float cx = x;
-    for (char ch : str) {
-      const unsigned char c = static_cast<unsigned char>(ch);
-      if (ch == '\n') { y += cell * 8; cx = x; continue; }
-      if (c < 32 || c > 126) { cx += cell * 6; continue; }
-      const Glyph5x7& glyph = kFont[c - 32];
-      // Defesa: glifo ausente na tabela nunca derruba o studio.
-      if (!glyph.rows[0]) { cx += cell * 6; continue; }
-      for (int row = 0; row < 7; ++row) {
-        for (int col = 0; col < 5; ++col) {
-          if (glyph.rows[row][col] != 'X') continue;
-          rect(cx + col * cell, y + row * cell, cell, cell, r, g, b, a);
-        }
-      }
-      cx += cell * 6;
-    }
-  }
-
-  float textWidth(const std::string& str, float cell) {
-    return static_cast<float>(str.size()) * cell * 6;
-  }
-
-  void flush() {
-    if (!ready || verts.empty()) return;
-    shader.use();
-    const int res = shader.uniform("uResolution");
-    if (res >= 0) glUniform2f(res, static_cast<float>(width), static_cast<float>(height));
-    glBindVertexArray(vao);
-    glBindBuffer(GL_ARRAY_BUFFER, vbo);
-    glBufferData(GL_ARRAY_BUFFER, static_cast<GLsizeiptr>(verts.size() * sizeof(float)), verts.data(), GL_DYNAMIC_DRAW);
-    glEnableVertexAttribArray(0);
-    glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 6 * sizeof(float), reinterpret_cast<void*>(0));
-    glEnableVertexAttribArray(1);
-    glVertexAttribPointer(1, 4, GL_FLOAT, GL_FALSE, 6 * sizeof(float), reinterpret_cast<void*>(2 * sizeof(float)));
-    glDrawArrays(GL_TRIANGLES, 0, static_cast<GLsizei>(verts.size() / 6));
-    glBindVertexArray(0);
-    verts.clear();
-  }
-};
-
-// ---------------------------------------------------------------- utilidades
-
-struct RayHit {
-  bool hit = false;
-  Vec3 point;
-  float distance = 0;
-  int blockIndex = -1;  // -1 = chão/grade
-  Vec3 normal;          // normal da face atingida
-};
-
-Vec3 sub(const Vec3& a, const Vec3& b) { return a - b; }
-Vec3 mul(const Vec3& a, float s) { return a * s; }
+}  // namespace (anon)
 
 // Interseção raio- AABB; devolve a normal da face atingida.
 bool rayAabb(const Vec3& origin, const Vec3& dir, const Vec3& bmin, const Vec3& bmax, float& outT, Vec3& outNormal) {
@@ -289,139 +192,87 @@ bool rayPlaneY(const Vec3& origin, const Vec3& dir, float planeY, float& outT) {
   outT = t;
   return true;
 }
+// ---- UiOverlay: implementação (compartilhada com editor_ui.cpp) ----
 
-std::string lowercaseCopy(std::string value) {
-  std::transform(value.begin(), value.end(), value.begin(), [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
-  return value;
+bool UiOverlay::init(std::string& error) {
+  if (!shader.compile(UI_VS, UI_FS, error)) return false;
+  glGenVertexArrays(1, &vao);
+  glGenBuffers(1, &vbo);
+  ready = true;
+  return true;
 }
 
-}  // namespace
+void UiOverlay::destroy() {
+  if (vbo) glDeleteBuffers(1, &vbo);
+  if (vao) glDeleteVertexArrays(1, &vao);
+  shader.destroy();
+  ready = false;
+}
+
+void UiOverlay::tri(float x0, float y0, float x1, float y1, float x2, float y2, float r, float g, float b, float a) {
+  verts.insert(verts.end(), {x0, y0, r, g, b, a, x1, y1, r, g, b, a, x2, y2, r, g, b, a});
+}
+
+void UiOverlay::rect(float x, float y, float w, float h, float r, float g, float b, float a) {
+  tri(x, y, x + w, y, x + w, y + h, r, g, b, a);
+  tri(x, y, x + w, y + h, x, y + h, r, g, b, a);
+}
+
+void UiOverlay::frame(float x, float y, float w, float h, float t, float r, float g, float b, float a) {
+  rect(x, y, w, t, r, g, b, a);
+  rect(x, y + h - t, w, t, r, g, b, a);
+  rect(x, y, t, h, r, g, b, a);
+  rect(x + w - t, y, t, h, r, g, b, a);
+}
+
+void UiOverlay::text(const std::string& str, float x, float y, float cell, float r, float g, float b, float a) {
+  float cx = x;
+  for (char ch : str) {
+    const unsigned char c = static_cast<unsigned char>(ch);
+    if (ch == '\n') { y += cell * 8; cx = x; continue; }
+    if (c < 32 || c > 126) { cx += cell * 6; continue; }
+    const Glyph5x7& glyph = kFont[c - 32];
+    if (!glyph.rows[0]) { cx += cell * 6; continue; }
+    for (int row = 0; row < 7; ++row) {
+      for (int col = 0; col < 5; ++col) {
+        if (glyph.rows[row][col] != 'X') continue;
+        rect(cx + col * cell, y + row * cell, cell, cell, r, g, b, a);
+      }
+    }
+    cx += cell * 6;
+  }
+}
+
+float UiOverlay::textWidth(const std::string& str, float cell) const {
+  return static_cast<float>(str.size()) * cell * 6;
+}
+
+void UiOverlay::flush() {
+  if (!ready || verts.empty()) return;
+  shader.use();
+  const int res = shader.uniform("uResolution");
+  if (res >= 0) glUniform2f(res, static_cast<float>(width), static_cast<float>(height));
+  glBindVertexArray(vao);
+  glBindBuffer(GL_ARRAY_BUFFER, vbo);
+  glBufferData(GL_ARRAY_BUFFER, static_cast<GLsizeiptr>(verts.size() * sizeof(float)), verts.data(), GL_DYNAMIC_DRAW);
+  glEnableVertexAttribArray(0);
+  glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 6 * sizeof(float), reinterpret_cast<void*>(0));
+  glEnableVertexAttribArray(1);
+  glVertexAttribPointer(1, 4, GL_FLOAT, GL_FALSE, 6 * sizeof(float), reinterpret_cast<void*>(2 * sizeof(float)));
+  glDrawArrays(GL_TRIANGLES, 0, static_cast<GLsizei>(verts.size() / 6));
+  glBindVertexArray(0);
+  verts.clear();
+}
 
 // ============================================================================
 // EditorApp
 // ============================================================================
 
-class EditorApp {
- public:
-  EditorResult run();
-  ~EditorApp();
 
- private:
-  // ---- janela/engine
-  bool initWindow(std::string& error);
-  void shutdown();
-  void newFromTemplate(int templateIndex);
-  bool openLoom(const std::string& path, std::string& error);
-  bool saveLoom(const std::string& path, std::string& error);
-  void markDirty();
-  void pushUndo();
-  void undo();
-  void redo();
-
-  // ---- interação
-  void updateCamera(float dt);
-  RayHit pickBlock(double mouseX, double mouseY, int fbw, int fbh);
-  void deleteSelection();
-  void duplicateSelection();
-  void focusSelection();
-  void snapSelection();
-
-  // ---- UI
-  void drawUi(int fbw, int fbh);
-  void drawWelcome(int fbw, int fbh);
-  int buttonHit(double mx, double my, float x, float y, float w, float h) const;
-  void setStatus(const std::string& message);
-  // Texto vai para uma fila: os rects são desenhados PRIMEIRO (ui_.flush) e
-  // o texto DEPOIS — evita que o estado GL da fonte quebre os rects em
-  // drivers rigorosos (bug da interface invisível).
-  struct TextDraw { std::string str; float x, y, size, r, g, b, a; };
-  void uiText(const std::string& str, float x, float y, float px, float r, float g, float b, float a = 1.0f);
-  void flushText();
-  std::vector<TextDraw> textQueue_;
-
-  GLFWwindow* window_ = nullptr;
-  WorldRenderer renderer_;
-  UiOverlay ui_;
-  UiFont font_;
-  std::string fontError_;
-
-  World world_;
-  std::string filePath_;         // vazio = nunca salvo
-  bool dirty_ = false;
-  bool inEditor_ = false;        // false = welcome screen
-  std::string status_ = "Bem-vindo ao Loomia Studio!";
-  std::string modalMessage_;
-
-  // câmera orbital
-  float camYaw_ = 0.8f;
-  float camPitch_ = 0.5f;
-  float camDist_ = 34.f;
-  Vec3 camTarget_{0, 2, 0};
-
-  // ferramenta
-  int tool_ = 0;  // 0=add, 1=select, 2=move, 3=scale, 4=paint, 5=erase
-  int selected_ = -1;
-  int hover_ = -1;
-  int currentMaterial_ = 4;  // plastic
-  int currentColor_[3] = {230, 120, 60};
-  float currentSize_[3] = {1, 1, 1};
-  bool snapEnabled_ = true;
-
-  // input
-  bool dragging_ = false;
-  bool orbiting_ = false;
-  bool panning_ = false;
-  double lastX_ = 0, lastY_ = 0;
-
-  // Gizmos: 0=nenhum, 1=eixos X/Y/Z de movimento, 2=alças de escala.
-  int gizmoMode_ = 0;
-  int gizmoAxis_ = -1;       // 0=x, 1=y, 2=z (-1 = nenhum pego)
-  Vec3 gizmoBlockStart_{};
-  Vec3 gizmoBlockStartSize_{};
-  float gizmoStartParam_ = 0;    // parâmetro escalar do bloco no clique
-  float gizmoMouseParam_ = 0;    // parâmetro escalar do mouse no clique
-  float gizmoFaceSign_ = 1;      // face arrastada: +1 (positiva) ou -1 (negativa)
-  float gizmoRayDist_ = 0;       // distância olho→bloco no clique (arrasto estável)
-  float gizmoStartDot_ = 0;      // dot((ray(t)-ray0(t)), eixo) no clique
-
-  // Menu "Arquivo" (dropdown da toolbar) e arquivos recentes.
-  bool fileMenu_ = false;
-  std::vector<std::string> recentList_;
-  void loadRecents();
-  void saveRecents();
-  void addRecent(const std::string& path);
-  bool saveWithDialog();          // pede caminho e salva; false se cancelado
-  void renameMap();               // renomeia o mapa (nome exibido/id)
-  void saveCopy();                // cria cópia em novo arquivo
-  void backToWelcome();           // volta para a tela inicial (com confirm)
-
-  // Modal de saída (alterações não salvas).
-  bool confirmExit_ = false;      // "salvar antes de sair?"
-  bool exitRequested_ = false;    // usuário confirmou "Não salvar" no fechamento
-  void drawConfirmExit(int fbw, int fbh);
-  bool gizmoDragging_ = false;
-
-  // Menu de cena aberto (cor do céu via HSL simples).
-  bool sceneMenu_ = false;
-  float skyHue_ = 0.58f, skySat_ = 0.5f, skyVal_ = 0.95f;
-
-  // Helpers de gizmo/cena.
-  void updateGizmo(double mx, double my, bool clicked, bool held);
-  void drawSelectionOverlay(float fbw, float fbh);
-  void drawSceneMenu(float fbw, float fbh);
-  void hslToRgb(float h, float s, float v, float out[3]) const;
-
-  // Prévia dos templates: cada card renderiza o template real num viewport.
-  void drawTemplatePreviews(int fbw, int fbh);
-  WorldRenderer previewRenderer_;
-  bool previewReady_ = false;
-  bool keys_[512] = {};
-  int fbw_ = WINDOW_W, fbh_ = WINDOW_H;
-
-  // undo/redo: cópias do mundo
-  std::vector<World> undoStack_;
-  std::vector<World> redoStack_;
-};
+EditorApp::EditorApp() {
+  // Estado inicial razoável (definido também no header por segurança).
+  status_ = "Bem-vindo ao Loomia Studio!";
+}
 
 EditorApp::~EditorApp() { shutdown(); }
 
@@ -443,6 +294,7 @@ bool EditorApp::initWindow(std::string& error) {
   glfwWindowHint(GLFW_OPENGL_FORWARD_COMPAT, GLFW_TRUE);
 
   window_ = glfwCreateWindow(WINDOW_W, WINDOW_H, "Loomia Studio", nullptr, nullptr);
+  glfwSetWindowSizeLimits(window_, MIN_WINDOW_W, MIN_WINDOW_H, GLFW_DONT_CARE, GLFW_DONT_CARE);
   if (!window_) {
     error = "não consegui criar a janela OpenGL 3.3 (a GPU suporta?)";
     glfwTerminate();
@@ -459,7 +311,12 @@ bool EditorApp::initWindow(std::string& error) {
   });
   glfwSetScrollCallback(window_, [](GLFWwindow* w, double, double yoff) {
     if (auto* self = static_cast<EditorApp*>(glfwGetWindowUserPointer(w))) {
-      self->camDist_ = std::clamp(self->camDist_ - static_cast<float>(yoff) * 2.5f, 4.f, 220.f);
+      const LayoutRects lay = self->layout();
+      double cx = 0, cy = 0;
+      glfwGetCursorPos(w, &cx, &cy);
+      const bool inside = cx >= lay.viewportX() && cx <= lay.viewportX() + lay.viewportW() &&
+                          cy >= lay.viewportY() && cy <= lay.viewportY() + lay.viewportH();
+      if (inside) self->camDist_ = std::clamp(self->camDist_ - static_cast<float>(yoff) * 2.5f, 4.f, 220.f);
     }
   });
   glfwSetFramebufferSizeCallback(window_, [](GLFWwindow* w, int width, int height) {
@@ -476,7 +333,7 @@ bool EditorApp::initWindow(std::string& error) {
   // funciona no build/, no AppImage e em qualquer cwd.
   std::vector<std::string> fontCandidates;
   if (const char* root = std::getenv("LOOMIA_STUDIO_ROOT")) {
-    fontCandidates.push_back(std::string(root) + "/misc/fonts/Comic_Neue/ComicNeue-Regular.ttf");
+    fontCandidates.push_back(std::string(root) + "/misc/fonts/Comic_Neue/ComicNeue-Bold.ttf");
   }
   {
     char exe[4096] = {};
@@ -487,12 +344,11 @@ bool EditorApp::initWindow(std::string& error) {
       for (int up = 0; up <= 3; ++up) {
         std::string base = exeDir;
         for (int step = 0; step < up; ++step) base += "/..";
-        fontCandidates.push_back(base + "/misc/fonts/Comic_Neue/ComicNeue-Regular.ttf");
-        fontCandidates.push_back(base + "/../misc/fonts/Comic_Neue/ComicNeue-Regular.ttf");
+        fontCandidates.push_back(base + "/misc/fonts/Comic_Neue/ComicNeue-Bold.ttf");
+        fontCandidates.push_back(base + "/../misc/fonts/Comic_Neue/ComicNeue-Bold.ttf");
       }
     }
   }
-  fontCandidates.push_back("/media/adryan/imaginedevel/Projetos/loomia/misc/fonts/Comic_Neue/ComicNeue-Regular.ttf");
   for (const std::string& candidate : fontCandidates) {
     std::string fontError;
     if (font_.init(candidate, fontError)) break;
@@ -501,6 +357,37 @@ bool EditorApp::initWindow(std::string& error) {
   // Renderer das prévias dos templates (contexto já é o corrente).
   loadRecents();
   std::string previewError;
+  // Ícones PNG: misc/icons/loomia-studio-icons. Resolve pelo LOOMIA_STUDIO_ROOT,
+  // subindo diretórios a partir do executável até achar a pasta.
+  {
+    std::vector<std::string> candidates;
+    if (const char* root = std::getenv("LOOMIA_STUDIO_ROOT")) {
+      candidates.push_back(std::string(root) + "/misc/icons/loomia-studio-icons");
+      candidates.push_back(std::string(root) + "/../misc/icons/loomia-studio-icons");
+    }
+    char exe[4096] = {};
+    const ssize_t len = readlink("/proc/self/exe", exe, sizeof(exe) - 1);
+    if (len > 0) {
+      std::string base(exe, static_cast<size_t>(len));
+      // Sobe até 6 níveis, testando "misc/..." em cada um.
+      for (int up = 0; up <= 6; ++up) {
+        const size_t slash = base.find_last_of('/');
+        if (slash == std::string::npos) break;
+        base = base.substr(0, slash);
+        candidates.push_back(base + "/misc/icons/loomia-studio-icons");
+      }
+    }
+    candidates.push_back("misc/icons/loomia-studio-icons");
+    candidates.push_back("../misc/icons/loomia-studio-icons");
+    std::string iconError;
+    for (const std::string& candidate : candidates) {
+      if (icons_.init(candidate, iconError)) {
+        iconsDir_ = candidate;
+        break;
+      }
+    }
+  }
+
   previewReady_ = previewRenderer_.init(previewError);
   return true;
 }
@@ -523,26 +410,6 @@ void EditorApp::shutdown() {
 
 void EditorApp::setStatus(const std::string& message) { status_ = message; }
 
-void EditorApp::uiText(const std::string& str, float x, float y, float px, float r, float g, float b, float a) {
-  textQueue_.push_back({str, x, y, px, r, g, b, a});
-}
-
-void EditorApp::flushText() {
-  if (textQueue_.empty()) return;
-  glDisable(GL_DEPTH_TEST);
-  glEnable(GL_BLEND);
-  glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-  for (const TextDraw& item : textQueue_) {
-    if (font_.ready()) {
-      font_.draw(item.str, item.x, item.y, item.size, item.r, item.g, item.b, item.a);
-    } else {
-      ui_.text(item.str, item.x, item.y, item.size / 5.f, item.r, item.g, item.b, item.a);
-    }
-  }
-  textQueue_.clear();
-  ui_.flush();  // fallback bitmap acumula no overlay
-}
-
 void EditorApp::markDirty() { dirty_ = true; }
 
 void EditorApp::pushUndo() {
@@ -556,7 +423,13 @@ void EditorApp::undo() {
   redoStack_.push_back(world_);
   world_ = undoStack_.back();
   undoStack_.pop_back();
-  if (selected_ >= static_cast<int>(world_.blocks.size())) selected_ = -1;
+  syncBlockMeta();
+  const int count = static_cast<int>(world_.blocks.size());
+  if (selected_ >= count) selected_ = -1;
+  // A seleção múltipla pode apontar para índices que deixaram de existir.
+  selection_.erase(std::remove_if(selection_.begin(), selection_.end(),
+                                  [count](int index) { return index < 0 || index >= count; }),
+                   selection_.end());
   renderer_.upload(world_);
   dirty_ = true;
   setStatus("Desfeito.");
@@ -567,48 +440,18 @@ void EditorApp::redo() {
   undoStack_.push_back(world_);
   world_ = redoStack_.back();
   redoStack_.pop_back();
+  syncBlockMeta();
+  const int count = static_cast<int>(world_.blocks.size());
+  if (selected_ >= count) selected_ = -1;
+  selection_.erase(std::remove_if(selection_.begin(), selection_.end(),
+                                  [count](int index) { return index < 0 || index >= count; }),
+                   selection_.end());
   renderer_.upload(world_);
   dirty_ = true;
   setStatus("Refeito.");
 }
 
 // ------------------------------------------------------------------ arquivo
-
-void EditorApp::newFromTemplate(int templateIndex) {
-  const TemplateId ids[] = {TemplateId::Baseplate, TemplateId::SkyIslands, TemplateId::Obby, TemplateId::Showcase};
-  world_ = makeTemplate(ids[std::clamp(templateIndex, 0, 3)]);
-  filePath_.clear();
-  dirty_ = false;
-  selected_ = -1;
-  undoStack_.clear();
-  redoStack_.clear();
-  renderer_.upload(world_);
-  inEditor_ = true;
-  setStatus("Novo mapa criado. Ctrl+S salva, Ctrl+Shift+S salva como...");
-}
-
-bool EditorApp::openLoom(const std::string& path, std::string& error) {
-  if (!loadWorld(path, world_, error)) return false;
-  filePath_ = path;
-  dirty_ = false;
-  selected_ = -1;
-  undoStack_.clear();
-  redoStack_.clear();
-  renderer_.upload(world_);
-  inEditor_ = true;
-  setStatus("Mapa carregado: " + path);
-  return true;
-}
-
-bool EditorApp::saveLoom(const std::string& path, std::string& error) {
-  if (!saveWorld(path, world_, error)) return false;
-  filePath_ = path;
-  dirty_ = false;
-  setStatus("Salvo em " + path);
-  return true;
-}
-
-// ------------------------------------------------------------------ câmera
 
 void EditorApp::updateCamera(float dt) {
   (void)dt;
@@ -624,37 +467,37 @@ void EditorApp::updateCamera(float dt) {
 
 RayHit EditorApp::pickBlock(double mouseX, double mouseY, int fbw, int fbh) {
   RayHit result;
-  // Constrói o raio da câmera para o pixel.
+  // O raio é construído no espaço do VIEWPORT (painéis não fazem parte).
+  const LayoutRects lay = layout();
+  const float vw = static_cast<float>(lay.viewportW()), vh = static_cast<float>(lay.viewportH());
+  const double localX = mouseX - lay.viewportX();
+  const double localY = mouseY - lay.viewportY();
   const Vec3 eye{
       camTarget_.x + camDist_ * std::cos(camPitch_) * std::sin(camYaw_),
       camTarget_.y + camDist_ * std::sin(camPitch_),
       camTarget_.z + camDist_ * std::cos(camPitch_) * std::cos(camYaw_)};
   const Mat4 view = Mat4::lookAt(eye, camTarget_, {0, 1, 0});
-  const float aspect = static_cast<float>(fbw) / static_cast<float>(fbh > 0 ? fbh : 1);
-  const Mat4 proj = Mat4::perspective(radians(70.f), aspect, 0.1f, 1500.f);
+  const float aspect = vw / (vh > 0 ? vh : 1);
 
   // Ponto no near plane: NDC -> mundo.
-  const float ndcX = static_cast<float>(mouseX) / fbw * 2.f - 1.f;
-  const float ndcY = 1.f - static_cast<float>(mouseY) / fbh * 2.f;
+  const float ndcX = static_cast<float>(localX) / vw * 2.f - 1.f;
+  const float ndcY = 1.f - static_cast<float>(localY) / vh * 2.f;
   const float tanHalf = std::tan(radians(35.f));
   Vec3 forward = normalize(sub(camTarget_, eye));
   Vec3 right = normalize(cross(forward, {0, 1, 0}));
   Vec3 up = cross(right, forward);
   Vec3 dir = normalize(forward + mul(right, ndcX * tanHalf * aspect) + mul(up, ndcY * tanHalf));
 
-  // Chão y=0 (alvo padrão da ferramenta add).
-  float tPlane = 0;
+  // Blocos primeiro (empate na superfície favorece o bloco — era a causa da
+  // baseplate "não selecionável" por cima: o plano y=0 empatava com o topo
+  // dela e o chão ganhava).
   Vec3 best = eye + mul(dir, 400.f);
   float bestT = 400.f;
   int bestIndex = -1;
-  if (rayPlaneY(eye, dir, 0.f, tPlane) && tPlane < bestT) {
-    bestT = tPlane;
-    best = eye + mul(dir, tPlane);
-    bestIndex = -1;
-  }
-
-  // Blocos.
   for (size_t index = 0; index < world_.blocks.size(); ++index) {
+    // Objetos travados ou ocultos não são selecionáveis pelo viewport.
+    if (index < blockLocked_.size() && blockLocked_[index]) continue;
+    if (index < blockHidden_.size() && blockHidden_[index]) continue;
     const Block& block = world_.blocks[index];
     Vec3 bmin, bmax;
     World::bounds(block, bmin, bmax);
@@ -667,58 +510,20 @@ RayHit EditorApp::pickBlock(double mouseX, double mouseY, int fbw, int fbh) {
       result.normal = normal;
     }
   }
+
+  // Chão y=0 por último — só vence se estiver ESTRITAMENTE mais perto.
+  float tPlane = 0;
+  if (rayPlaneY(eye, dir, 0.f, tPlane) && tPlane < bestT - 0.001f) {
+    bestT = tPlane;
+    best = eye + mul(dir, tPlane);
+    bestIndex = -1;
+  }
   result.hit = true;
   result.point = best;
   result.distance = bestT;
   result.blockIndex = bestIndex;
   return result;
 }
-
-void EditorApp::deleteSelection() {
-  if (selected_ < 0 || selected_ >= static_cast<int>(world_.blocks.size())) return;
-  pushUndo();
-  world_.blocks.erase(world_.blocks.begin() + selected_);
-  selected_ = -1;
-  renderer_.upload(world_);
-  markDirty();
-  setStatus("Bloco removido (Delete).");
-}
-
-void EditorApp::duplicateSelection() {
-  if (selected_ < 0 || selected_ >= static_cast<int>(world_.blocks.size())) return;
-  pushUndo();
-  Block copy = world_.blocks[static_cast<size_t>(selected_)];
-  copy.position.z += copy.size.z;  // encosta na frente do original
-  world_.blocks.push_back(copy);
-  selected_ = static_cast<int>(world_.blocks.size()) - 1;
-  renderer_.upload(world_);
-  markDirty();
-  setStatus("Bloco duplicado (Ctrl+D).");
-}
-
-void EditorApp::focusSelection() {
-  if (selected_ < 0 || selected_ >= static_cast<int>(world_.blocks.size())) return;
-  camTarget_ = world_.blocks[static_cast<size_t>(selected_)].position;
-  setStatus("Câmera centralizada no bloco (F).");
-}
-
-void EditorApp::snapSelection() {
-  if (selected_ < 0 || selected_ >= static_cast<int>(world_.blocks.size())) return;
-  pushUndo();
-  Block& block = world_.blocks[static_cast<size_t>(selected_)];
-  block.position.x = std::round(block.position.x);
-  block.position.y = std::round(block.position.y);
-  block.position.z = std::round(block.position.z);
-  renderer_.upload(world_);
-  markDirty();
-  setStatus("Posição arredondada (G).");
-}
-
-int EditorApp::buttonHit(double mx, double my, float x, float y, float w, float h) const {
-  return (mx >= x && mx <= x + w && my >= y && my <= y + h) ? 1 : 0;
-}
-
-// ------------------------------------------------------------------ loop
 
 EditorResult EditorApp::run() {
   std::string error;
@@ -742,38 +547,55 @@ EditorResult EditorApp::run() {
   }
 
   while (running) {
-    if (glfwWindowShouldClose(window_)) {
-      if (inEditor_ && dirty_ && !confirmExit_) {
-        // Alterações não salvas: pergunta antes de sair.
-        confirmExit_ = true;
-        glfwSetWindowShouldClose(window_, GLFW_FALSE);
-      } else if (!inEditor_ || !dirty_) {
-        break;  // sem alterações (ou na welcome): sai direto
-      }
-      // confirmExit_ ativo: o loop continua até o usuário responder.
-    }
     if (exitRequested_) break;
+    if (glfwWindowShouldClose(window_)) {
+      if (inEditor_ && dirty_) {
+        if (!confirmExit_) {
+          // Alterações não salvas: pergunta antes de sair.
+          confirmExit_ = true;
+          glfwSetWindowShouldClose(window_, GLFW_FALSE);
+        }
+        // Modal aberto: continua o loop até o usuário responder;
+        // o modal seta exitRequested_ (fechar) ou limpa dirty_ (continuar).
+      } else {
+        break;  // sem alterações: sai direto
+      }
+    }
     const double now = glfwGetTime();
     const float dt = static_cast<float>(now - lastTime);
     lastTime = now;
 
     glfwPollEvents();
+    clickConsumed_ = false;
+    if (uiCooldown_ > 0) --uiCooldown_;
+    tickAutosave(dt);
 
     // ---------- câmera: botão direito orbita, roda dá zoom, WASD move o alvo
-    if (glfwGetMouseButton(window_, GLFW_MOUSE_BUTTON_RIGHT) == GLFW_PRESS) {
+    // (SÓ dentro do viewport central; com modal aberto nenhuma câmera mexe)
+    double probeX = 0, probeY = 0;
+    glfwGetCursorPos(window_, &probeX, &probeY);
+    const bool cursorInViewport = [this](double x, double y) {
+      const LayoutRects lay = layout();
+      return x >= lay.viewportX() && x <= lay.viewportX() + lay.viewportW() &&
+             y >= lay.viewportY() && y <= lay.viewportY() + lay.viewportH();
+    }(probeX, probeY);
+    const bool cameraAllowed = inEditor_ && !confirmExit_ && cursorInViewport && uiCooldown_ == 0;
+
+    if (cameraAllowed && glfwGetMouseButton(window_, GLFW_MOUSE_BUTTON_RIGHT) == GLFW_PRESS) {
       double x, y;
       glfwGetCursorPos(window_, &x, &y);
       if (!orbiting_) { orbiting_ = true; lastX_ = x; lastY_ = y; }
-      camYaw_ -= static_cast<float>(x - lastX_) * 0.008f;
-      camPitch_ = std::clamp(camPitch_ + static_cast<float>(y - lastY_) * 0.006f, -1.4f, 1.5f);
+      const float invert = prefsInvertOrbit_ ? -1.f : 1.f;
+      camYaw_ -= static_cast<float>(x - lastX_) * 0.008f * prefsOrbitSpeed_ * invert;
+      camPitch_ = std::clamp(camPitch_ + static_cast<float>(y - lastY_) * 0.006f * prefsOrbitSpeed_ * invert, -1.4f, 1.5f);
       lastX_ = x;
       lastY_ = y;
     } else {
       orbiting_ = false;
     }
 
-    // Botão do meio: pan do mapa (move o alvo da câmera no plano da tela).
-    if (glfwGetMouseButton(window_, GLFW_MOUSE_BUTTON_MIDDLE) == GLFW_PRESS) {
+    // Botão do meio: pan do mapa (só dentro do viewport e sem modal).
+    if (cameraAllowed && glfwGetMouseButton(window_, GLFW_MOUSE_BUTTON_MIDDLE) == GLFW_PRESS) {
       double x, y;
       glfwGetCursorPos(window_, &x, &y);
       if (!panning_) { panning_ = true; lastX_ = x; lastY_ = y; }
@@ -794,15 +616,33 @@ EditorResult EditorApp::run() {
     updateCamera(dt);
 
     // ---------- interação com a viewport (botão esquerdo)
-    if (inEditor_) {
+    // Modal aberto captura tudo: nenhum clique chega à viewport/3D.
+    // Modo teste (mini-client): Esc sai; o update roda por frame.
+    if (inEditor_ && playTestOpen_) {
+      if (keys_[256] /*ESC*/) { keys_[256] = false; endTestPlay(); }
+      updateTestPlay(dt);
+    }
+
+    // Modal de preferências: viewport inteiramente bloqueado enquanto aberto.
+    if (inEditor_ && prefsOpen_) {
+      // (nenhuma interação de edição — o popup atende no final do frame)
+    }
+
+    if (inEditor_ && !confirmExit_ && !playTestOpen_ && !prefsOpen_) {
       double mx, my;
       glfwGetCursorPos(window_, &mx, &my);
-      const bool inViewport = my > UI_BAR_H && my < (fbh_ - UI_STATUS_H);
+      const LayoutRects layNow = layout();
+      const bool inViewport = my > layNow.viewportY() && my < layNow.viewportY() + layNow.viewportH() &&
+                              mx > layNow.viewportX() && mx < layNow.viewportX() + layNow.viewportW();
       const bool leftDown = glfwGetMouseButton(window_, GLFW_MOUSE_BUTTON_LEFT) == GLFW_PRESS;
-      if (inViewport && leftDown && !dragging_) {
+      if (inViewport && leftDown && !dragging_ && !mouseWasDown_ && !clickConsumed_) {
+        clickConsumed_ = true;
         dragging_ = true;
+        // Gizmo primeiro: se o clique pegou um minicubo, ele consome o clique
+        // (o switch não roda e não sobrescreve a seleção).
+        bool gizmoHandled = (tool_ == 2 || tool_ == 3) && updateGizmoTryPick(mx, my);
         const RayHit hit = pickBlock(mx, my, fbw_, fbh_);
-        if (hit.hit) {
+        if (hit.hit && !gizmoHandled) {
           switch (tool_) {
             case 0: {  // Add: coloca bloco adjacente à face atingida
               pushUndo();
@@ -822,9 +662,23 @@ EditorResult EditorApp::run() {
               markDirty();
               break;
             }
-            case 1:  // Select
+            case 1: {  // Select: 1 bloco no clique; retângulo se ARRASTAR
               selected_ = hit.blockIndex;
-              if (selected_ >= 0) setStatus("Bloco " + std::to_string(selected_) + " selecionado (arraste as setas para mover, com 3/Move).");
+              selection_.clear();
+              if (selected_ >= 0) {
+                selection_.push_back(selected_);
+                setStatus("Bloco selecionado. Arraste para selecionar vários (retângulo).");
+              }
+              break;
+            }
+            case 2:   // Move: seleciona o bloco clicado como âncora dos gizmos
+            case 3:   // Scale: idem
+              selected_ = hit.blockIndex;
+              if (selected_ >= 0) {
+                selection_.clear();
+                selection_.push_back(selected_);
+                setStatus("Bloco escolhido — arraste os minicubos das faces.");
+              }
               break;
             case 4:  // Paint
               if (hit.blockIndex >= 0) {
@@ -858,8 +712,59 @@ EditorResult EditorApp::run() {
         }
       }
 
-      // Gizmos de mover/escalar: com ferramenta 2 ou 3, arraste as setas.
-      if (tool_ == 2 || tool_ == 3) updateGizmo(mx, my, leftDown, dragging_);
+      // Arrasto do gizmo (o clique foi consumido pelo TryPick acima).
+      if (tool_ == 2 || tool_ == 3) updateGizmoDrag(mx, my, leftDown);
+
+      // Retângulo de seleção (ferramenta Select + arrastar): acompanha o mouse.
+      if (tool_ == 1) {
+        if (dragging_ && leftDown) {
+          if (!marqueeActive_) { marqueeActive_ = true; marqueeStart_[0] = static_cast<float>(mx); marqueeStart_[1] = static_cast<float>(my); }
+          marqueeNow_[0] = static_cast<float>(mx);
+          marqueeNow_[1] = static_cast<float>(my);
+        } else if (marqueeActive_ && !leftDown) {
+          // Solta o botão: seleciona todos os blocos cujo centro projetado
+          // cai dentro do retângulo (projeção via pickBlock por amostragem).
+          const float x0 = std::min(marqueeStart_[0], marqueeNow_[0]);
+          const float x1 = std::max(marqueeStart_[0], marqueeNow_[0]);
+          const float y0 = std::min(marqueeStart_[1], marqueeNow_[1]);
+          const float y1 = std::max(marqueeStart_[1], marqueeNow_[1]);
+          selection_.clear();
+          for (size_t index = 0; index < world_.blocks.size(); ++index) {
+            // Projeta o centro do bloco: cast um raio para ele e mede a tela.
+            const Block& block = world_.blocks[index];
+            const Vec3 eye{
+                camTarget_.x + camDist_ * std::cos(camPitch_) * std::sin(camYaw_),
+                camTarget_.y + camDist_ * std::sin(camPitch_),
+                camTarget_.z + camDist_ * std::cos(camPitch_) * std::cos(camYaw_)};
+            // Projeção no espaço do VIEWPORT (não da janela inteira).
+            const LayoutRects marqueeLay = layout();
+            const float mvx = static_cast<float>(marqueeLay.viewportX());
+            const float mvy = static_cast<float>(marqueeLay.viewportY());
+            const float mvW = static_cast<float>(marqueeLay.viewportW());
+            const float mvH = static_cast<float>(marqueeLay.viewportH());
+            const float aspect = mvW / (mvH > 0 ? mvH : 1);
+            const float tanHalf = std::tan(radians(35.f));
+            Vec3 forward = normalize(sub(camTarget_, eye));
+            Vec3 right = normalize(cross(forward, {0, 1, 0}));
+            Vec3 up = cross(right, forward);
+            Vec3 toBlock = block.position - eye;
+            const float depth = dot(toBlock, forward);
+            if (depth <= 0) continue;
+            const Vec3 projected = forward * depth;
+            const Vec3 flat = toBlock - projected;
+            const float sx = mvx + mvW / 2.f + (dot(flat, right) / (depth * tanHalf * aspect)) * (mvW / 2.f);
+            const float sy = mvy + mvH / 2.f - (dot(flat, up) / (depth * tanHalf)) * (mvH / 2.f);
+            if (sx >= x0 && sx <= x1 && sy >= y0 && sy <= y1) selection_.push_back(static_cast<int>(index));
+          }
+          marqueeActive_ = false;
+          if (!selection_.empty()) {
+            selected_ = selection_.front();  // âncora: primeiro do retângulo
+            setStatus(std::to_string(selection_.size()) + " bloco(s) selecionado(s) — troque para Move/Scale para arrastar.");
+          } else {
+            selected_ = -1;
+          }
+        }
+      }
     }
 
     // ---------- render 3D
@@ -868,7 +773,43 @@ EditorResult EditorApp::run() {
     glClearColor(world_.sky.rf(), world_.sky.gf(), world_.sky.bf(), 1.f);
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
-    if (inEditor_) {
+    if (inEditor_ && activeTab_ == 1) {
+      // Aba Scripts: SEM cena 3D — o editor de código ocupa o viewport.
+      const Theme themeNow = theme();
+      glDisable(GL_SCISSOR_TEST);
+      glViewport(0, 0, fbw_, fbh_);
+      glClearColor(themeNow.bgR, themeNow.bgG, themeNow.bgB, 1.f);
+      glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+    } else if (inEditor_) {
+      const LayoutRects lay = layout();
+      int vx = lay.viewportX(), vy = lay.viewportY();
+      int vw = lay.viewportW(), vh = lay.viewportH();
+      // Pré-visualização de proporção (preferência do editor): encaixa a cena
+      // numa moldura com a proporção escolhida (livre, 16:9, 4:3, 1:1).
+      if (previewAspect_ > 0) {
+        const float ratios[] = {0.f, 16.f / 9.f, 4.f / 3.f, 1.f};
+        const float target = ratios[previewAspect_];
+        float w2 = static_cast<float>(vw), h2 = w2 / target;
+        if (h2 > vh) { h2 = static_cast<float>(vh); w2 = h2 * target; }
+        vx += (vw - static_cast<int>(w2)) / 2;
+        vy += (vh - static_cast<int>(h2)) / 2;
+        vw = static_cast<int>(w2);
+        vh = static_cast<int>(h2);
+      }
+      // 1) limpa TODO o framebuffer com a cor de fundo do TEMA (os painéis
+      //    da UI usam essa base); o céu do mapa não aparece por fora.
+      const Theme themeNow = theme();
+      glDisable(GL_SCISSOR_TEST);
+      glViewport(0, 0, fbw_, fbh_);
+      glClearColor(themeNow.bgR, themeNow.bgG, themeNow.bgB, 1.f);
+      glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+      // 2) limpa SÓ o viewport com a cor do CÉU do mapa e desenha a cena lá.
+      glEnable(GL_SCISSOR_TEST);
+      glScissor(vx, fbh_ - vy - vh, vw, vh);
+      glViewport(vx, fbh_ - vy - vh, vw, vh);
+      glClearColor(world_.sky.r / 255.f, world_.sky.g / 255.f, world_.sky.b / 255.f, 1.f);
+      glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+
       const Vec3 eye{
           camTarget_.x + camDist_ * std::cos(camPitch_) * std::sin(camYaw_),
           camTarget_.y + camDist_ * std::sin(camPitch_),
@@ -876,31 +817,50 @@ EditorResult EditorApp::run() {
       Camera camera;
       camera.position = eye;
       camera.target = camTarget_;
-      const float aspect = static_cast<float>(fbw_) / static_cast<float>(fbh_ > 0 ? fbh_ : 1);
-      renderer_.draw(camera, aspect);
+      const float aspect = static_cast<float>(vw) / static_cast<float>(vh > 0 ? vh : 1);
+      // Desenha o mundo SEM os objetos ocultos (cópia filtrada barata: só
+      // quando houver algum oculto).
+      bool anyHidden = false;
+      for (size_t index = 0; index < blockHidden_.size() && index < world_.blocks.size(); ++index) {
+        if (blockHidden_[index]) { anyHidden = true; break; }
+      }
+      if (anyHidden) {
+        World visible = world_;
+        visible.blocks.clear();
+        for (size_t index = 0; index < world_.blocks.size(); ++index) {
+          if (index < blockHidden_.size() && blockHidden_[index]) continue;
+          visible.blocks.push_back(world_.blocks[index]);
+        }
+        renderer_.upload(visible);
+        renderer_.draw(camera, aspect);
+        renderer_.upload(world_);  // restaura a malha completa para picking/etc.
+      } else {
+        renderer_.draw(camera, aspect);
+      }
 
-      // Seleção: bloco destacado com caixa maior semitransparente.
-      if (selected_ >= 0 && selected_ < static_cast<int>(world_.blocks.size())) {
-        const Block& block = world_.blocks[static_cast<size_t>(selected_)];
+      // Seleção: todos os blocos destacados com caixa maior semitransparente.
+      for (const int index : selection_) {
+        if (index < 0 || index >= static_cast<int>(world_.blocks.size())) continue;
+        const Block& block = world_.blocks[static_cast<size_t>(index)];
         Mat4 transform = Mat4::translation(block.position);
         transform = transform * Mat4::scale(block.size * 1.08f);
-        renderer_.drawBox(camera, aspect, transform, {255, 255, 255}, true);
+        renderer_.drawBox(camera, aspect, transform, index == selected_ ? Color3{255, 255, 255} : Color3{200, 220, 255}, true);
       }
-      // Gizmos: 1 minicubo em cada face do bloco (6 alças). A cor do cubo
-      // indica o eixo da face (vermelho=X, verde=Y, azul=Z). Arrastar um
-      // minicubo move (ferramenta 2) ou estica/encolhe (ferramenta 3) o bloco
-      // naquele eixo, dos dois lados.
-      if (selected_ >= 0 && (tool_ == 2 || tool_ == 3)) {
-        const Block& block = world_.blocks[static_cast<size_t>(selected_)];
-        const float cubeSize = 0.34f;
-        // Faces: ±X (vermelho), ±Y (verde), ±Z (azul).
+      // Gizmos: 1 minicubo em cada face do bloco (6 alças). Cor = eixo
+      // (vermelho=X, verde=Y, azul=Z). Tamanho proporcional à distância da
+      // câmera — na tela fica constante, fácil de clicar de longe ou perto.
+      if (selected_ >= 0 && prefsShowGizmos_ && (tool_ == 2 || tool_ == 3)) {
+        const Block& block = world_.blocks[static_cast<size_t>(selected_)];  // gizmo do bloco âncora
+        const float gizmoScale = std::max(0.6f, camDist_ * 0.035f);
+        const float gap = gizmoScale * 0.9f;
+        const float cubeSize = gizmoScale * 0.55f;
         const Color3 axisColor[3] = {{220, 60, 60}, {70, 200, 80}, {70, 110, 230}};
         for (int axis = 0; axis < 3; ++axis) {
           for (int sign = -1; sign <= 1; sign += 2) {
             Vec3 offset{0, 0, 0};
-            if (axis == 0) offset.x = sign * (block.size.x / 2.f + cubeSize / 2.f);
-            if (axis == 1) offset.y = sign * (block.size.y / 2.f + cubeSize / 2.f);
-            if (axis == 2) offset.z = sign * (block.size.z / 2.f + cubeSize / 2.f);
+            if (axis == 0) offset.x = sign * (block.size.x / 2.f + gap + cubeSize / 2.f);
+            if (axis == 1) offset.y = sign * (block.size.y / 2.f + gap + cubeSize / 2.f);
+            if (axis == 2) offset.z = sign * (block.size.z / 2.f + gap + cubeSize / 2.f);
             Mat4 transform = Mat4::translation(block.position + offset);
             transform = transform * Mat4::scale({cubeSize, cubeSize, cubeSize});
             const bool active = gizmoDragging_ && gizmoAxis_ == axis;
@@ -908,36 +868,78 @@ EditorResult EditorApp::run() {
           }
         }
       }
+      glDisable(GL_SCISSOR_TEST);
+      glViewport(0, 0, fbw_, fbh_);
     }
 
-    // ---------- UI
+    // ---------- UI — shell novo (tema + layout responsivo)
     glDisable(GL_DEPTH_TEST);
     glEnable(GL_BLEND);
     glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+    // O overlay 2D usa o tamanho ATUAL do framebuffer (antes ficava preso ao
+    // tamanho do boot — com resize, os rects saíam fora da tela e só o texto
+    // aparecia, porque a fonte lê o viewport diretamente).
+    ui_.width = fbw_;
+    ui_.height = fbh_;
+    th_ = theme();
+    const Theme& currentTheme = th_;
     if (inEditor_) {
-      drawUi(fbw_, fbh_);
-      drawSceneMenu(fbw_, fbh_);
+      // Painéis do shell (podem usar viewport/scissor — desenha antes da cena?
+      // Não: a cena já foi desenhada; os painéis cobrem as margens).
+      drawTopbar(fbw_, fbh_, currentTheme);
+      drawTabs(fbw_, fbh_, currentTheme);
+      drawToolRail(fbw_, fbh_, currentTheme);
+      drawHierarchy(fbw_, fbh_, currentTheme);
+      drawProperties(fbw_, fbh_, currentTheme);
+      drawAssetBrowser(fbw_, fbh_, currentTheme);
+      drawViewportFrame(fbw_, fbh_, currentTheme);
+      drawStatusLine(fbw_, fbh_, currentTheme);
+      ui_.rect(200, 200, 60, 60, 0.f, 1.f, 0.f, 1.f);  // DEBUG loop
+      if (activeTab_ == 1) {
+        drawLuaEditor(fbw_, fbh_, currentTheme);
+        drawLuaCodeEditor(fbw_, fbh_, currentTheme);
+      }
+      ui_.flush();
+      flushText();
+      // Modal de alterações não salvas por cima de tudo.
+      drawConfirmExit(fbw_, fbh_);
+      ui_.flush();
+      flushText();
+      if (prefsOpen_) {
+        drawPrefs(fbw_, fbh_);
+        ui_.flush();
+        flushText();
+      }
     } else {
-      // Prévias 3D dos templates primeiro (viewport próprio), depois a UI 2D.
-      drawTemplatePreviews(fbw_, fbh_);
+      // Welcome: 1) papel dos cards (2D) 2) prévias 3D por cima 3) texto.
       drawWelcome(fbw_, fbh_);
+      ui_.flush();
+      drawTemplatePreviews(fbw_, fbh_);
+      drawWelcomeText(fbw_, fbh_);
+      ui_.flush();
+      flushText();
     }
-    ui_.flush();
-    flushText();
-    // Modal de alterações não salvas por cima de tudo.
-    ui_.flush();
-    flushText();
-    drawConfirmExit(fbw_, fbh_);
+    // Retângulo de seleção (marquee) por cima da viewport.
+    if (marqueeActive_) {
+      const float x0 = std::min(marqueeStart_[0], marqueeNow_[0]);
+      const float y0 = std::min(marqueeStart_[1], marqueeNow_[1]);
+      const float wRect = std::abs(marqueeNow_[0] - marqueeStart_[0]);
+      const float hRect = std::abs(marqueeNow_[1] - marqueeStart_[1]);
+      ui_.rect(x0, y0, wRect, hRect, 0.2f, 0.5f, 0.95f, 0.12f);
+      ui_.frame(x0, y0, wRect, hRect, 2, 0.2f, 0.5f, 0.95f, 0.9f);
+    }
     ui_.flush();
     flushText();
     glEnable(GL_DEPTH_TEST);
     glDisable(GL_BLEND);
 
+    mouseWasDown_ = glfwGetMouseButton(window_, GLFW_MOUSE_BUTTON_LEFT) == GLFW_PRESS;
     glfwSwapBuffers(window_);
   }
 
   ui_.destroy();
   font_.destroy();
+  icons_.destroy();
   renderer_.destroy();
   previewRenderer_.destroy();
   previewReady_ = false;
@@ -946,599 +948,5 @@ EditorResult EditorApp::run() {
 }
 
 // ------------------------------------------------------------------ welcome
-
-void EditorApp::drawWelcome(int fbw, int fbh) {
-  // Fundo suave
-  ui_.rect(0, 0, static_cast<float>(fbw), static_cast<float>(fbh), 0.94f, 0.93f, 0.88f, 1.f);
-  uiText("Loomia Studio", fbw / 2.f - font_.textWidth("Loomia Studio", 42) / 2, 100, 42, 0.08f, 0.12f, 0.17f);
-  uiText("edite mapas .loom com a mesma engine do cliente", fbw / 2.f - font_.textWidth("edite mapas .loom com a mesma engine do cliente", 18) / 2, 160, 18, 0.3f, 0.35f, 0.42f);
-
-  // Cartões de template
-  const char* names[] = {"Baseplate", "Ilhas Flutuantes", "Obby (Parkour)", "Sala de Exposicao"};
-  const char* descs[] = {"piso limpo para comecar do zero", "tres ilhas no ceu com pontes", "plataformas suspensas", "salao com todos os materiais"};
-  const float cardW = 250, cardH = 180;
-  const float startX = fbw / 2.f - (cardW * 4 + 40) / 2.f;
-  for (int index = 0; index < 4; ++index) {
-    const float x = startX + index * (cardW + 10);
-    const float y = 280;
-    ui_.rect(x, y, cardW, cardH, 1.f, 1.f, 1.f);
-    ui_.frame(x, y, cardW, cardH, 3, 0.08f, 0.12f, 0.17f);
-    // moldura da prévia (a imagem 3D é desenhada por drawTemplatePreviews)
-    ui_.frame(x + 16, y + 16, cardW - 32, 66, 2, 0.4f, 0.5f, 0.6f);
-    uiText(names[index], x + 16, y + 92, 16, 0.08f, 0.12f, 0.17f);
-    uiText(descs[index], x + 16, y + 116, 12, 0.35f, 0.4f, 0.46f);
-    uiText("[clique para comecar]", x + 16, y + 148, 12, 0.72f, 0.55f, 0.1f);
-    // clique
-    double mx, my;
-    glfwGetCursorPos(window_, &mx, &my);
-    if (buttonHit(mx, my, x, y, cardW, cardH) && glfwGetMouseButton(window_, GLFW_MOUSE_BUTTON_LEFT) == GLFW_PRESS) {
-      newFromTemplate(index);
-      return;
-    }
-  }
-
-  // Carregar arquivo
-  uiText("ou abra um mapa existente:", fbw / 2.f - font_.textWidth("ou abra um mapa existente:", 14) / 2, 520, 14, 0.3f, 0.35f, 0.42f);
-  const float bx = fbw / 2.f - 110, by = 550, bw = 220, bh = 40;
-  ui_.rect(bx, by, bw, bh, 0.91f, 0.71f, 0.17f);
-  ui_.frame(bx, by, bw, bh, 3, 0.08f, 0.12f, 0.17f);
-  uiText("ABRIR .LOOM", bx + (bw - font_.textWidth("ABRIR .LOOM", 16)) / 2, by + 14, 16, 0.15f, 0.12f, 0.0f);
-  double mx, my;
-  glfwGetCursorPos(window_, &mx, &my);
-  static bool wasDown = false;
-  const bool down = glfwGetMouseButton(window_, GLFW_MOUSE_BUTTON_LEFT) == GLFW_PRESS;
-  if (down && !wasDown && buttonHit(mx, my, bx, by, bw, bh)) {
-    // File dialog nativo via zenity/kdialog (padrão em distros Linux)
-    FILE* pipe = popen("zenity --file-selection --title='Abrir mapa .loom' 2>/dev/null | tr -d '\\n'", "r");
-    char buffer[1024] = {};
-    if (pipe && fgets(buffer, sizeof(buffer), pipe)) {
-      std::string chosen = buffer;
-      if (!chosen.empty()) {
-        std::string err;
-        if (!openLoom(chosen, err)) setStatus("Erro: " + err);
-      }
-    } else {
-      setStatus("Nenhum arquivo escolhido (ou zenity nao instalado).");
-    }
-    if (pipe) pclose(pipe);
-  }
-  wasDown = down;
-}
-
-// ------------------------------------------------------------------ UI do editor
-
-void EditorApp::drawUi(int fbw, int fbh) {
-  const float W = static_cast<float>(fbw), H = static_cast<float>(fbh);
-  double mx, my;
-  glfwGetCursorPos(window_, &mx, &my);
-  static bool wasDown = false;
-  const bool down = glfwGetMouseButton(window_, GLFW_MOUSE_BUTTON_LEFT) == GLFW_PRESS;
-  const bool clicked = down && !wasDown;
-
-  // ---------- barra de ferramentas superior
-  const float barY = 0;
-  ui_.rect(0, barY, W, static_cast<float>(UI_BAR_H), 1.f, 0.99f, 0.96f);
-  ui_.frame(0, barY, W, static_cast<float>(UI_BAR_H), 2, 0.08f, 0.12f, 0.17f);
-
-  // ---------- menu Arquivo (dropdown)
-  {
-    const float fx = 12.f, fy = barY + 12.f, fw = 92.f, fh = 40.f;
-    ui_.rect(fx, fy, fw, fh, fileMenu_ ? 0.91f : 0.96f, fileMenu_ ? 0.71f : 0.96f, fileMenu_ ? 0.17f : 0.96f);
-    ui_.frame(fx, fy, fw, fh, 2, 0.08f, 0.12f, 0.17f);
-    uiText("Arquivo", fx + 16, fy + 12, 14, fileMenu_ ? 0.15f : 0.3f, fileMenu_ ? 0.12f : 0.35f, 0.02f);
-    if (clicked && buttonHit(mx, my, fx, fy, fw, fh)) fileMenu_ = !fileMenu_;
-
-    if (fileMenu_) {
-      const float mw = 220;
-      float my2 = fy + fh + 4;
-      struct Item { const char* label; int action; };
-      const Item items[] = {
-          {"Novo (Ctrl+N)", 0},
-          {"Abrir .loom", 1},
-          {"Salvar (Ctrl+S)", 2},
-          {"Salvar como...", 3},
-          {"Criar cópia...", 4},
-          {"Renomear mapa", 5},
-          {"Voltar ao início", 6},
-      };
-      for (const Item& item : items) {
-        ui_.rect(fx, my2, mw, 30, 1.f, 1.f, 1.f);
-        ui_.frame(fx, my2, mw, 30, 1, 0.5f, 0.55f, 0.6f);
-        uiText(item.label, fx + 12, my2 + 7, 13, 0.15f, 0.2f, 0.28f);
-        if (clicked && buttonHit(mx, my, fx, my2, mw, 30)) {
-          fileMenu_ = false;
-          switch (item.action) {
-            case 0: newFromTemplate(0); break;
-            case 1: {
-              FILE* pipe = popen("zenity --file-selection --title='Abrir mapa .loom' 2>/dev/null | tr -d '\n'", "r");
-              char buffer[1024] = {};
-              bool opened = false;
-              if (pipe && fgets(buffer, sizeof(buffer), pipe)) {
-                std::string chosen = buffer;
-                if (!chosen.empty()) {
-                  std::string err;
-                  if (openLoom(chosen, err)) { addRecent(chosen); opened = true; }
-                  else setStatus("Erro: " + err);
-                }
-              } else setStatus("Nenhum arquivo escolhido.");
-              if (pipe) pclose(pipe);
-              break;
-            }
-            case 2: {
-              if (!filePath_.empty()) {
-                std::string err;
-                if (saveLoom(filePath_, err)) addRecent(filePath_);
-                else setStatus("Erro ao salvar: " + err);
-              } else saveWithDialog();
-              break;
-            }
-            case 3: saveWithDialog(); break;
-            case 4: saveCopy(); break;
-            case 5: renameMap(); break;
-            case 6: backToWelcome(); break;
-          }
-        }
-        my2 += 34;
-      }
-
-      // Recentes
-      uiText("Recentes:", fx + 12, my2 + 6, 12, 0.5f, 0.55f, 0.6f);
-      my2 += 28;
-      if (recentList_.empty()) uiText("(vazio)", fx + 12, my2, 12, 0.6f, 0.65f, 0.7f);
-      for (const std::string& path : recentList_) {
-        // Mostra só o nome do arquivo.
-        const std::string name = path.substr(path.find_last_of('/') + 1);
-        ui_.rect(fx, my2, mw, 28, 0.97f, 0.97f, 1.f);
-        ui_.frame(fx, my2, mw, 28, 1, 0.6f, 0.65f, 0.7f);
-        uiText(name, fx + 12, my2 + 7, 12, 0.2f, 0.3f, 0.5f);
-        if (clicked && buttonHit(mx, my, fx, my2, mw, 28)) {
-          fileMenu_ = false;
-          std::string err;
-          if (openLoom(path, err)) setStatus("Mapa carregado: " + path);
-          else setStatus("Erro: " + err);
-        }
-        my2 += 32;
-      }
-    }
-  }
-
-  // ferramentas começam depois do menu Arquivo
-  const char* toolNames[] = {"1 Add", "2 Select", "3 Move", "4 Scale", "5 Paint", "6 Erase"};
-  for (int index = 0; index < 6; ++index) {
-    const float x = 118.f + index * 86.f;
-    const float y = barY + 12.f;
-    const bool active = tool_ == index;
-    ui_.rect(x, y, 80.f, 40.f, active ? 0.91f : 0.96f, active ? 0.71f : 0.96f, active ? 0.17f : 0.96f);
-    ui_.frame(x, y, 80.f, 40.f, 2, 0.08f, 0.12f, 0.17f);
-    uiText(toolNames[index], x + 10, y + 14, 13, active ? 0.15f : 0.3f, active ? 0.12f : 0.35f, 0.02f);
-    if (clicked && buttonHit(mx, my, x, y, 80.f, 40.f)) { tool_ = index; setStatus(std::string("Ferramenta: ") + toolNames[index]); }
-  }
-
-  // ---------- paleta de cores + material
-  const unsigned char palette[][3] = {
-      {230, 120, 60}, {230, 190, 40}, {100, 160, 60}, {70, 150, 200}, {110, 80, 190},
-      {230, 230, 235}, {70, 70, 80}, {190, 60, 60},  {240, 160, 200}, {60, 200, 170}};
-  for (int index = 0; index < 10; ++index) {
-    const float x = 540.f + index * 30.f;
-    const float y = barY + 12.f;
-    const bool match = currentColor_[0] == palette[index][0] && currentColor_[1] == palette[index][1] && currentColor_[2] == palette[index][2];
-    ui_.rect(x, y, 24.f, 24.f, palette[index][0] / 255.f, palette[index][1] / 255.f, palette[index][2] / 255.f, 1.f);
-    ui_.frame(x, y, 24.f, 24.f, match ? 3.f : 1.f, 0.08f, 0.12f, 0.17f);
-    if (clicked && buttonHit(mx, my, x, y, 24.f, 24.f)) {
-      currentColor_[0] = palette[index][0]; currentColor_[1] = palette[index][1]; currentColor_[2] = palette[index][2];
-    }
-  }
-
-  // ---------- botão Cena (cor do céu)
-  {
-    const float x = 540.f + 10 * 30.f + 12.f, y = barY + 12.f;
-    ui_.rect(x, y, 76.f, 40.f, 0.96f, 0.96f, 0.96f);
-    ui_.frame(x, y, 76.f, 40.f, 2, 0.08f, 0.12f, 0.17f);
-    uiText("Cena (C)", x + 12, y + 14, 13, 0.3f, 0.35f, 0.42f);
-    if (clicked && buttonHit(mx, my, x, y, 76.f, 40.f)) sceneMenu_ = !sceneMenu_;
-  }
-
-  // ---------- linha de status
-  ui_.rect(0, H - UI_STATUS_H, W, static_cast<float>(UI_STATUS_H), 0.08f, 0.12f, 0.17f);
-  char left[256];
-  std::snprintf(left, sizeof(left), "%s %s  |  %zu blocos  |  %s", dirty_ ? "*" : " ", filePath_.empty() ? "(sem titulo)" : filePath_.c_str(), world_.blocks.size(), status_.c_str());
-  uiText(left, 10, H - UI_STATUS_H + 5, 13, 0.95f, 0.9f, 0.8f);
-
-  // ---------- atalhos globais (keyboard)
-  const bool ctrl = keys_[341] /*GLFW_KEY_LEFT_CONTROL*/ || keys_[345];
-  const bool shift = keys_[340] || keys_[344];
-  if (ctrl && keys_['Z']) { undo(); keys_['Z'] = false; }
-  if (ctrl && shift && keys_['Z']) { redo(); keys_['Z'] = false; }
-  if (ctrl && keys_['Y']) { redo(); keys_['Y'] = false; }
-  if (ctrl && keys_['D']) { duplicateSelection(); keys_['D'] = false; }
-  if (keys_[256] /*DELETE*/ || keys_[261] /*BACKSPACE*/) { deleteSelection(); keys_[256] = false; keys_[261] = false; }
-  if (keys_['G']) { snapSelection(); keys_['G'] = false; }
-  if (keys_['F']) { focusSelection(); keys_['F'] = false; }
-  if (keys_['C']) { sceneMenu_ = !sceneMenu_; keys_['C'] = false; }
-  if (keys_['X']) { gizmoAxis_ = 0; keys_['X'] = false; }
-  if (keys_['Y']) { gizmoAxis_ = 1; keys_['Y'] = false; }
-  if (keys_['Z']) { gizmoAxis_ = 2; keys_['Z'] = false; }
-  if (keys_['1']) { tool_ = 0; keys_['1'] = false; }
-  if (keys_['2']) { tool_ = 1; keys_['2'] = false; }
-  if (keys_['3']) { tool_ = 2; keys_['3'] = false; }
-  if (keys_['4']) { tool_ = 3; keys_['4'] = false; }
-  if (keys_['5']) { tool_ = 4; keys_['5'] = false; }
-  if (keys_['6']) { tool_ = 5; keys_['6'] = false; }
-
-  // Ctrl+S: salva (se tem caminho) ou abre dialog de salvar
-  if (ctrl && keys_['S']) {
-    keys_['S'] = false;
-    std::string target = filePath_;
-    if (target.empty()) {
-      FILE* pipe = popen("zenity --file-selection --save --confirm-overwrite --title='Salvar mapa .loom' 2>/dev/null | tr -d '\n'", "r");
-      char buffer2[1024] = {};
-      if (pipe && fgets(buffer2, sizeof(buffer2), pipe)) target = buffer2;
-      if (pipe) pclose(pipe);
-    }
-    if (!target.empty()) {
-      if (target.find(".loom") == std::string::npos) target += ".loom";
-      std::string err;
-      if (!saveLoom(target, err)) setStatus("Erro ao salvar: " + err);
-    }
-  }
-
-  // Ctrl+N: novo mapa (baseplate)
-  if (ctrl && keys_['N']) { keys_['N'] = false; newFromTemplate(0); }
-
-  wasDown = down;
-}
-
-// ---------------------------------------------------------------------------
-// Gizmos e menu de cena
-// ---------------------------------------------------------------------------
-
-void EditorApp::hslToRgb(float h, float s, float v, float out[3]) const {
-  h = h - std::floor(h);
-  float r = v, g = v, b = v;
-  if (s > 0) {
-    const float chroma = (1 - std::abs(2 * v - 1)) * s;
-    const float hue = h * 6;
-    const float x = chroma * (1 - std::abs(std::fmod(hue, 2.f) - 1));
-    if (hue < 1)      { r = chroma; g = x; }
-    else if (hue < 2) { r = x; g = chroma; }
-    else if (hue < 3) { g = chroma; b = x; }
-    else if (hue < 4) { g = x; b = chroma; }
-    else if (hue < 5) { r = x; b = chroma; }
-    else              { r = chroma; b = x; }
-    const float m = v - chroma / 2;
-    r += m; g += m; b += m;
-  }
-  out[0] = r * 255; out[1] = g * 255; out[2] = b * 255;
-}
-
-void EditorApp::drawSceneMenu(float fbw, float fbh) {
-  (void)fbh;
-  if (!sceneMenu_) return;
-  const float W = 260, H = 130;
-  const float x = static_cast<float>(fbw) - W - 16, y = 60;
-  ui_.rect(x, y, W, H, 1.f, 1.f, 1.f);
-  ui_.frame(x, y, W, H, 3, 0.08f, 0.12f, 0.17f);
-  uiText("Cena", x + 14, y + 12, 16, 0.08f, 0.12f, 0.17f);
-  uiText("Cor do ceu (hue)", x + 14, y + 40, 12, 0.3f, 0.35f, 0.42f);
-
-  // Slider de hue: arraste para mudar a cor do céu.
-  const float sx = x + 14, sy = y + 60, sw = W - 28;
-  ui_.rect(sx, sy, sw, 10, 0.85f, 0.9f, 0.95f);
-  for (int step = 0; step < 12; ++step) {
-    float rgb[3];
-    hslToRgb(step / 12.f, skySat_, skyVal_, rgb);
-    ui_.rect(sx + step * sw / 12.f, sy, sw / 12.f, 10, rgb[0] / 255, rgb[1] / 255, rgb[2] / 255);
-  }
-  const float handleX = sx + skyHue_ * sw - 4;
-  ui_.rect(handleX, sy - 3, 8, 16, 0.1f, 0.15f, 0.2f);
-
-  double mx, my;
-  glfwGetCursorPos(window_, &mx, &my);
-  if (glfwGetMouseButton(window_, GLFW_MOUSE_BUTTON_LEFT) == GLFW_PRESS &&
-      mx > sx && mx < sx + sw && my > sy - 6 && my < sy + 16) {
-    const float newHue = std::clamp(static_cast<float>((mx - sx) / sw), 0.f, 0.999f);
-    if (std::abs(newHue - skyHue_) > 0.002f) {
-      skyHue_ = newHue;
-      float rgb[3];
-      hslToRgb(skyHue_, skySat_, skyVal_, rgb);
-      world_.sky = {rgb[0], rgb[1], rgb[2]};
-      markDirty();
-    }
-  }
-
-  uiText("Clique fora para fechar", x + 14, y + 92, 11, 0.5f, 0.55f, 0.6f);
-  // Fecha ao clicar fora do menu.
-  if (glfwGetMouseButton(window_, GLFW_MOUSE_BUTTON_LEFT) == GLFW_PRESS &&
-      !(mx > x && mx < x + W && my > y && my < y + H)) {
-    sceneMenu_ = false;
-  }
-}
-
-// Gizmo: clique no minicubo de uma face e arraste. O arrasto usa o ponto do
-// raio a uma distância FIXA (a do clique) — o delta projetado no eixo fica
-// estável, sem depender do plano que se move junto com o bloco.
-void EditorApp::updateGizmo(double mx, double my, bool clicked, bool held) {
-  if (selected_ < 0 || selected_ >= static_cast<int>(world_.blocks.size())) return;
-  Block& block = world_.blocks[static_cast<size_t>(selected_)];
-
-  const Vec3 axes[3] = {{1, 0, 0}, {0, 1, 0}, {0, 0, 1}};
-  const float cube = 0.5f;  // hitbox dos minicubos (visual = 0.34)
-
-  auto eyePos = [&] {
-    return Vec3{
-        camTarget_.x + camDist_ * std::cos(camPitch_) * std::sin(camYaw_),
-        camTarget_.y + camDist_ * std::sin(camPitch_),
-        camTarget_.z + camDist_ * std::cos(camPitch_) * std::cos(camYaw_)};
-  };
-  auto mouseRay = [&](const Vec3& eye) {
-    const float aspect = static_cast<float>(fbw_) / static_cast<float>(fbh_ > 0 ? fbh_ : 1);
-    const float ndcX = static_cast<float>(mx) / fbw_ * 2.f - 1.f;
-    const float ndcY = 1.f - static_cast<float>(my) / fbh_ * 2.f;
-    const float tanHalf = std::tan(radians(35.f));
-    Vec3 forward = normalize(sub(camTarget_, eye));
-    Vec3 right = normalize(cross(forward, {0, 1, 0}));
-    Vec3 up = cross(right, forward);
-    return normalize(forward + mul(right, ndcX * tanHalf * aspect) + mul(up, ndcY * tanHalf));
-  };
-
-  if (clicked && !gizmoDragging_) {
-    const Vec3 eye = eyePos();
-    const Vec3 dir = mouseRay(eye);
-
-    // Hitbox dos 6 minicubos; ganha o mais próximo da câmera.
-    float bestT = 1e9f;
-    int bestAxis = -1;
-    for (int axis = 0; axis < 3; ++axis) {
-      for (int sign = -1; sign <= 1; sign += 2) {
-        const float half = (axis == 0 ? block.size.x : axis == 1 ? block.size.y : block.size.z) / 2.f;
-        const float center = sign * (half + cube / 2.f);
-        Vec3 bmin = block.position, bmax = block.position;
-        if (axis == 0) { bmin.x += center - cube / 2; bmax.x += center + cube / 2; bmin.y -= cube / 2; bmax.y += cube / 2; bmin.z -= cube / 2; bmax.z += cube / 2; }
-        if (axis == 1) { bmin.y += center - cube / 2; bmax.y += center + cube / 2; bmin.x -= cube / 2; bmax.x += cube / 2; bmin.z -= cube / 2; bmax.z += cube / 2; }
-        if (axis == 2) { bmin.z += center - cube / 2; bmax.z += center + cube / 2; bmin.x -= cube / 2; bmax.x += cube / 2; bmin.y -= cube / 2; bmax.y += cube / 2; }
-        float t = 0;
-        Vec3 normal;
-        if (rayAabb(eye, dir, bmin, bmax, t, normal) && t < bestT) {
-          bestT = t;
-          bestAxis = axis;
-        }
-      }
-    }
-    if (bestAxis < 0) return;  // clique fora dos minicubos: nada acontece
-
-    gizmoDragging_ = true;
-    gizmoAxis_ = bestAxis;
-    gizmoFaceSign_ = (dot(eye + mul(dir, bestT), axes[bestAxis]) >= dot(block.position, axes[bestAxis])) ? 1.f : -1.f;
-    gizmoBlockStart_ = block.position;
-    gizmoBlockStartSize_ = block.size;
-    gizmoRayDist_ = bestT;                       // distância fixa do arrasto
-    gizmoStartDot_ = dot(eye + mul(dir, bestT) - eye, axes[bestAxis]);  // referência no eixo
-    pushUndo();
-    setStatus(std::string("Arrastando eixo ") + "XYZ"[bestAxis] + " — solte para aplicar.");
-    return;
-  }
-
-  if (!gizmoDragging_) return;
-  if (!held) {
-    gizmoDragging_ = false;
-    renderer_.upload(world_);
-    return;
-  }
-
-  // Arrasto: ponto do raio à MESMA distância do clique; o delta no eixo
-  // (menos a referência inicial) move/estica o bloco de forma estável.
-  const Vec3 eye = eyePos();
-  const Vec3 dir = mouseRay(eye);
-  const Vec3 rayPoint = eye + mul(dir, gizmoRayDist_);
-  const float delta = dot(rayPoint - eye, axes[gizmoAxis_]) - gizmoStartDot_;
-
-  if (tool_ == 2) {
-    block.position = gizmoBlockStart_ + mul(axes[gizmoAxis_], delta);
-  } else {
-    // Escalar pela face: a face arrastada acompanha o mouse, a oposta fica fixa.
-    Vec3 size = gizmoBlockStartSize_;
-    Vec3 pos = gizmoBlockStart_;
-    const float grow = delta * gizmoFaceSign_;
-    const float halfOld = (gizmoAxis_ == 0 ? size.x : gizmoAxis_ == 1 ? size.y : size.z) / 2.f;
-    const float halfNew = std::max(0.05f, halfOld + grow / 2.f);
-    const float centerShift = (halfNew - halfOld) * gizmoFaceSign_;
-    if (gizmoAxis_ == 0) { size.x = halfNew * 2.f; pos.x += centerShift; }
-    else if (gizmoAxis_ == 1) { size.y = halfNew * 2.f; pos.y += centerShift; }
-    else { size.z = halfNew * 2.f; pos.z += centerShift; }
-    block.size = size;
-    block.position = pos;
-  }
-  if (snapEnabled_) {
-    block.position.x = std::round(block.position.x);
-    block.position.y = std::round(block.position.y);
-    block.position.z = std::round(block.position.z);
-    if (tool_ == 3) {
-      block.size.x = std::max(0.1f, std::round(block.size.x));
-      block.size.y = std::max(0.1f, std::round(block.size.y));
-      block.size.z = std::max(0.1f, std::round(block.size.z));
-    }
-  }
-  renderer_.upload(world_);
-  markDirty();
-}
-
-// undo único por arrasto: chamado no início do clique (dentro do bloco if acima).
-// (O pushUndo do gizmo é feito aqui, em updateGizmo, no momento do clique.)
-
-// ---------------------------------------------------------------------------
-// Prévias 3D dos templates na welcome screen (viewport por card via scissor)
-// ---------------------------------------------------------------------------
-
-void EditorApp::drawTemplatePreviews(int fbw, int fbh) {
-  if (!previewReady_) return;
-  const float cardW = 250, cardH = 180;
-  const float startX = static_cast<float>(fbw) / 2.f - (cardW * 4 + 40) / 2.f;
-  const float cardY = 280;
-  const float pvW = cardW - 32, pvH = 66;
-  const float pvY = cardY + 16;
-
-  const TemplateId ids[] = {TemplateId::Baseplate, TemplateId::SkyIslands, TemplateId::Obby, TemplateId::Showcase};
-  for (int index = 0; index < 4; ++index) {
-    World preview = makeTemplate(ids[index]);
-    previewRenderer_.upload(preview);
-
-    const float pvX = startX + static_cast<float>(index) * (cardW + 10) + 16;
-    const int vx = static_cast<int>(pvX);
-    const int vy = static_cast<int>(fbh - pvY - pvH);
-    glViewport(vx, vy, static_cast<int>(pvW), static_cast<int>(pvH));
-    glScissor(vx, vy, static_cast<int>(pvW), static_cast<int>(pvH));
-    glEnable(GL_SCISSOR_TEST);
-
-    const float aspect = pvW / pvH;
-    const float yaw = 0.9f + index * 0.35f;
-    const Vec3 eye{26.f * std::sin(yaw), 16.f, 26.f * std::cos(yaw)};
-    Camera camera;
-    camera.position = eye;
-    camera.fovDegrees = 55.f;
-    previewRenderer_.draw(camera, aspect);
-
-    glDisable(GL_SCISSOR_TEST);
-  }
-  glViewport(0, 0, fbw, fbh);
-}
-
-// ---------------------------------------------------------------------------
-// Arquivo: recentes, salvar como, cópia, renomear, modal de saída
-// ---------------------------------------------------------------------------
-
-std::string recentsPath() {
-  const char* home = std::getenv("HOME");
-  return (home ? std::string(home) : std::string("/tmp")) + "/.loomia-studio-recentes.txt";
-}
-
-void EditorApp::loadRecents() {
-  recentList_.clear();
-  std::ifstream file(recentsPath());
-  std::string line;
-  while (std::getline(file, line) && recentList_.size() < 8) {
-    if (!line.empty() && std::filesystem::exists(line)) recentList_.push_back(line);
-  }
-}
-
-void EditorApp::saveRecents() {
-  std::ofstream file(recentsPath());
-  for (const std::string& path : recentList_) file << path << '\n';
-}
-
-void EditorApp::addRecent(const std::string& path) {
-  // Remove duplicado e coloca no topo.
-  recentList_.erase(std::remove(recentList_.begin(), recentList_.end(), path), recentList_.end());
-  recentList_.insert(recentList_.begin(), path);
-  if (recentList_.size() > 8) recentList_.resize(8);
-  saveRecents();
-}
-
-/** Pede o caminho (zenity) e salva. Devolve false se cancelado. */
-bool EditorApp::saveWithDialog() {
-  FILE* pipe = popen("zenity --file-selection --save --confirm-overwrite --title='Salvar mapa .loom' 2>/dev/null | tr -d '\\n'", "r");
-  char buffer[1024] = {};
-  bool ok = false;
-  if (pipe && fgets(buffer, sizeof(buffer), pipe)) {
-    std::string target = buffer;
-    if (!target.empty()) {
-      if (target.find(".loom") == std::string::npos) target += ".loom";
-      std::string err;
-      ok = saveLoom(target, err);
-      if (!ok) setStatus("Erro ao salvar: " + err);
-      else addRecent(target);
-    }
-  }
-  if (pipe) pclose(pipe);
-  return ok;
-}
-
-/** Cria uma cópia do mapa em um novo arquivo. */
-void EditorApp::saveCopy() {
-  const std::string backup = filePath_;
-  filePath_.clear();  // força o diálogo perguntar onde
-  if (!saveWithDialog()) {
-    filePath_ = backup;  // cancelado: mantém o original
-    setStatus("Cópia cancelada.");
-  }
-}
-
-/** Renomeia o mapa (nome exibido) direto pela linha de comando do zenity. */
-void EditorApp::renameMap() {
-  std::string command = "zenity --entry --title='Renomear mapa' --text='Novo nome:' --entry-text='" + world_.name + "' 2>/dev/null | tr -d '\\n'";
-  FILE* pipe = popen(command.c_str(), "r");
-  char buffer[256] = {};
-  if (pipe && fgets(buffer, sizeof(buffer), pipe)) {
-    const std::string newName = buffer;
-    if (!newName.empty()) {
-      pushUndo();
-      world_.name = newName;
-      markDirty();
-      setStatus("Mapa renomeado para \"" + newName + "\".");
-    }
-  }
-  if (pipe) pclose(pipe);
-}
-
-/** Volta para a welcome screen (pergunta antes se há alterações). */
-void EditorApp::backToWelcome() {
-  if (dirty_) {
-    confirmExit_ = true;
-    return;
-  }
-  inEditor_ = false;
-  setStatus("Bem-vindo ao Loomia Studio!");
-}
-
-/** Modal: "salvar antes de sair/voltar?" — 3 opções. */
-void EditorApp::drawConfirmExit(int fbw, int fbh) {
-  if (!confirmExit_) return;
-  // Fundo escurecido.
-  ui_.rect(0, 0, static_cast<float>(fbw), static_cast<float>(fbh), 0.05f, 0.08f, 0.12f, 0.55f);
-  const float W = 460, H = 190;
-  const float x = (fbw - W) / 2.f, y = (fbh - H) / 2.f;
-  ui_.rect(x, y, W, H, 1.f, 1.f, 1.f);
-  ui_.frame(x, y, W, H, 3, 0.08f, 0.12f, 0.17f);
-  uiText("Alterações não salvas", x + 24, y + 20, 20, 0.75f, 0.3f, 0.1f);
-  uiText("O mapa tem alterações que ainda não foram salvas.", x + 24, y + 56, 14, 0.3f, 0.35f, 0.42f);
-
-  double mx, my;
-  glfwGetCursorPos(window_, &mx, &my);
-  static bool wasDown = false;
-  const bool down = glfwGetMouseButton(window_, GLFW_MOUSE_BUTTON_LEFT) == GLFW_PRESS;
-  const bool clicked = down && !wasDown;
-
-  struct Option { const char* label; float x; };
-  const float bw = 130;
-  const Option options[] = {
-      {"Salvar", x + 24},
-      {"Não salvar", x + 24 + bw + 10},
-      {"Cancelar", x + 24 + (bw + 10) * 2},
-  };
-  for (const Option& option : options) {
-    ui_.rect(option.x, y + 120, bw, 42, 0.96f, 0.96f, 0.96f);
-    ui_.frame(option.x, y + 120, bw, 42, 2, 0.08f, 0.12f, 0.17f);
-    uiText(option.label, option.x + (bw - font_.textWidth(option.label, 14)) / 2, y + 133, 14, 0.15f, 0.2f, 0.28f);
-    if (clicked && buttonHit(mx, my, option.x, y + 120, bw, 42)) {
-      confirmExit_ = false;
-      if (std::strcmp(option.label, "Salvar") == 0) {
-        if (!filePath_.empty()) {
-          std::string err;
-          if (saveLoom(filePath_, err)) { addRecent(filePath_); inEditor_ = false; if (glfwWindowShouldClose(window_)) exitRequested_ = true; }
-          else setStatus("Erro ao salvar: " + err);
-        } else if (saveWithDialog()) {
-          inEditor_ = false;
-          if (glfwWindowShouldClose(window_)) exitRequested_ = true;
-        }
-      } else if (std::strcmp(option.label, "Não salvar") == 0) {
-        dirty_ = false;
-        // Se o pedido veio do X da janela, fecha de verdade.
-        if (glfwWindowShouldClose(window_)) exitRequested_ = true;
-        inEditor_ = false;
-      }
-      // "Cancelar" só fecha o modal.
-    }
-  }
-  wasDown = down;
-}
 
 }  // namespace loomia

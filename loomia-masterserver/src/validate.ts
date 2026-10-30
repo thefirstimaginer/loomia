@@ -150,3 +150,28 @@ export function parseMapPublish(body: unknown): MapPublishPayload {
     },
   }
 }
+
+// ---------------------------------------------------------------------------
+// Helpers compartilhados pelas rotas (admin, comunidade, social)
+// ---------------------------------------------------------------------------
+
+/** Texto opcional: trim, exigência de tamanho mínimo e limite máximo. */
+export function parseText(value: unknown, field: string, min: number, max: number): string {
+  const result = typeof value === 'string' ? value.trim() : ''
+  if (result.length < min) throw new HttpError(400, `${field} é obrigatório`, 'invalid')
+  if (result.length > max) throw new HttpError(400, `${field} é longo demais`, 'invalid')
+  return result
+}
+
+/** Id numérico vindo da URL/corpo, normalizado como string decimal. */
+export function parseId(value: string | undefined, field = 'id'): string {
+  const id = Number(value)
+  if (!Number.isInteger(id) || id <= 0) throw new HttpError(400, `${field} inválido`, 'invalid')
+  return String(id)
+}
+
+/** Lê um valor de uma lista fechada; devolve null quando não é válido. */
+export function parseEnum<T extends string>(value: unknown, allowed: readonly T[]): T | null {
+  const result = typeof value === 'string' ? value : ''
+  return (allowed as readonly string[]).includes(result) ? (result as T) : null
+}

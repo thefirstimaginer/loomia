@@ -47,7 +47,7 @@ export function LandingPage() {
           <div className="hero-actions">
             {user ? (
               <>
-                <Link to="/explorar" className="launch-button">
+                <Link to="explore" className="launch-button">
                   EXPLORAR MUNDOS
                 </Link>
                 <Link to="/perfil" className="ghost-button">
@@ -116,7 +116,7 @@ export function LandingPage() {
               {maps.slice(0, 5).map((map) => (
                 <li key={map.id}>
                   <span className="player-dot" />
-                  <Link to="/explorar" className="link-button">
+                  <Link to="/explore" className="link-button">
                     {map.name}
                   </Link>
                   <small>

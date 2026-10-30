@@ -234,9 +234,18 @@ const server = createServer(async (req, res) => {
   const url = new URL(req.url ?? '/', `http://${req.headers.host ?? 'localhost'}`)
   const ip = clientIp(req)
 
-  // CORS para `npm run dev` do Vite (com credenciais, para o cookie de sessão).
+  // CORS para `npm run dev` do Vite/admin (com credenciais, para o cookie de sessão).
+  // Apenas origens na lista de permissões refletem com credenciais — evita que um
+  // site atacante leia respostas autenticadas do master.
   const origin = req.headers.origin
-  if (origin) {
+  const allowedOrigins = new Set([
+    ...config.adminOrigins,
+    `http://127.0.0.1:5173`,
+    `http://localhost:5173`,
+    `http://127.0.0.1:${config.port}`,
+    `http://localhost:${config.port}`,
+  ])
+  if (origin && allowedOrigins.has(origin)) {
     res.setHeader('access-control-allow-origin', origin)
     res.setHeader('access-control-allow-credentials', 'true')
     res.setHeader('vary', 'origin')

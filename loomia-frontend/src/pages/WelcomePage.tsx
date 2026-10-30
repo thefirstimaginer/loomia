@@ -28,7 +28,7 @@ export function WelcomePage({ onDone }: { onDone: (path: string) => void }) {
     try {
       await api.createAvatar({ ...value, isActive: true })
       await refresh()
-      onDone('/explorar')
+      onDone('/explore')
     } catch (problem) {
       setError(problem instanceof Error ? problem.message : 'Não foi possível salvar o avatar.')
     } finally {
